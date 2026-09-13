@@ -1,0 +1,6 @@
+body { background: #f5f7f5; }
+.navbar-brand { font-weight: 700; letter-spacing: .01em; }
+.bslib-sidebar-layout { min-height: calc(100vh - 150px); }
+.query-status { margin: .5rem 0 1rem; padding: .65rem .8rem; background: #eef5ef; border-left: 4px solid #176b3a; }
+.app-footer { padding: 1rem 1.5rem; color: #4b5c50; font-size: .9rem; text-align: center; }
+.btn-download { margin-bottom: .25rem; }

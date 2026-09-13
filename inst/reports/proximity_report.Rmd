@@ -1,0 +1,127 @@
+---
+title: "Relatorio de proximidade aos equipamentos Sampa+Rural"
+date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+  pdf_document:
+    toc: true
+params:
+  results: null
+  origins: null
+  equipment: null
+  config: null
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 8, fig.height = 5)
+results <- params$results
+origins <- params$origins
+equipment <- params$equipment
+abbreviate_metric <- function(x) {
+  replacements <- c(
+    geodesic_karney = "KARNEY", geodesic_haversine = "HAVERSINE",
+    euclidean_projected = "EUCLIDEAN", manhattan_projected = "MANHATTAN",
+    chebyshev_projected = "CHEBYSHEV", network_foot = "NET_FOOT",
+    network_bicycle = "NET_BIKE", network_motorcar = "NET_CAR",
+    origin_to_equipment = "IDA", equipment_to_origin = "VOLTA", symmetric = "SIM"
+  )
+  out <- x
+  for (term in names(replacements)) out <- gsub(term, replacements[[term]], out, fixed = TRUE)
+  out
+}
+```
+
+# Escopo e proveniencia
+
+Este relatorio descreve uma consulta de proximidade espacial. As distancias geometricas e de rede nao sao intercambiaveis: cada uma representa uma definicao operacional distinta de proximidade. O CEP, quando usado, e geocodificado de modo aproximado e nao representa necessariamente um domicilio.
+
+Data de geracao: `r format(Sys.time(), tz = 'UTC', usetz = TRUE)`.
+
+```{r provenance}
+provenance <- data.frame(
+  indicador = c("Origens", "Equipamentos distintos", "Metricas", "Snapshot"),
+  valor = c(length(unique(results$origin_id)), length(unique(results$equipment_id)),
+    length(unique(results$metric_id)), paste(unique(na.omit(results$snapshot_date)), collapse = ", "))
+)
+knitr::kable(provenance)
+```
+
+# Resultados
+
+```{r summary}
+summary_table <- results |>
+  dplyr::group_by(metric_id, direction) |>
+  dplyr::summarise(
+    pares = dplyr::n(),
+    mediana_m = stats::median(distance_m, na.rm = TRUE),
+    p90_m = stats::quantile(distance_m, 0.90, na.rm = TRUE),
+    dentro_raio = sum(within_radius, na.rm = TRUE),
+    .groups = "drop"
+  )
+knitr::kable(summary_table, digits = 1)
+```
+
+```{r chart, fig.cap="Distribuicao das distancias segundo a metrica."}
+if (nrow(results)) {
+  print(ggplot2::ggplot(results, ggplot2::aes(distance_m / 1000, colour = metric_id)) +
+    ggplot2::stat_ecdf(geom = "step", na.rm = TRUE) +
+    ggplot2::theme_minimal() +
+    ggplot2::labs(x = "Distancia (km)", y = "Proporcao acumulada", colour = "Metrica"))
+}
+```
+
+# Concordancia entre metricas
+
+```{r agreement}
+agreement <- tryCatch(metric_agreement(results), error = function(e) data.frame(observacao = conditionMessage(e)))
+if (nrow(agreement) && "metric_a" %in% names(agreement)) {
+  agreement$metric_a <- abbreviate_metric(agreement$metric_a)
+  agreement$metric_b <- abbreviate_metric(agreement$metric_b)
+  rank_columns <- intersect(c("origin_id", "metric_a", "metric_b", "n_common",
+    "spearman_rho", "kendall_tau", "top_k_jaccard"), names(agreement))
+  difference_columns <- intersect(c("origin_id", "metric_a", "metric_b", "mean_difference_m",
+    "limits_lower_m", "limits_upper_m"), names(agreement))
+  rank_table <- agreement[, rank_columns, drop = FALSE]
+  names(rank_table) <- c("origem", "A", "B", "n", "rho", "tau", "Jaccard")[seq_along(rank_table)]
+  difference_table <- agreement[, difference_columns, drop = FALSE]
+  names(difference_table) <- c("origem", "A", "B", "dif_m", "lim_inf_m", "lim_sup_m")[seq_along(difference_table)]
+  knitr::kable(rank_table, digits = 3,
+    caption = "Concordancia de ordenacao e dos conjuntos top-k.")
+  knitr::kable(difference_table, digits = 1,
+    caption = "Diferencas pareadas e limites de concordancia (metros).")
+} else {
+  knitr::kable(agreement, digits = 3)
+}
+```
+
+# Lista detalhada
+
+```{r details}
+details <- data.frame(
+  origem = results$origin_id,
+  equipamento = substr(results$equipment_name, 1, 22),
+  categoria = substr(results$category, 1, 15),
+  metrica = paste0(abbreviate_metric(results$metric_id), "/", abbreviate_metric(results$direction)),
+  pos = results$rank,
+  dist_m = results$distance_m,
+  stringsAsFactors = FALSE
+)
+if (any(is.finite(results$duration_min))) details$tempo_min <- results$duration_min
+if (any(results$routing_status != "not_applicable", na.rm = TRUE)) details$status <- results$routing_status
+knitr::kable(utils::head(details, 200), digits = 1, caption = "Primeiras 200 combinacoes selecionadas.")
+```
+
+# Limitacoes e interpretacao
+
+- O cadastro e a cobertura de coordenadas podem ser incompletos e variam entre snapshots.
+- Distancias Manhattan e Chebyshev projetadas sao cenarios geometricos; nao descrevem ruas.
+- Resultados de rede dependem da data e da completude do OpenStreetMap, do perfil modal e do snapping.
+- O caminho de menor distancia e o caminho de menor tempo respondem a perguntas diferentes.
+- Comparacoes territoriais sao descritivas. Modelos apresentados pelo projeto sao associacionais e nao causais.
+- Enderecos e coordenadas de consulta nao devem ser publicados em nivel individual.
+
+# Reprodutibilidade
+
+O projeto registra checksums das fontes, parametros de consulta, versoes de software e regras de validacao. Para uma auditoria, arquive o manifesto do snapshot e o arquivo de configuracao usados na execucao.

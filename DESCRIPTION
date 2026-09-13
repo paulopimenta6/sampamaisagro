@@ -1,0 +1,57 @@
+Package: sampamaisrural
+Title: Acessibilidade Espacial aos Equipamentos do Sampa+Rural
+Version: 0.1.0
+Authors@R: person("Paulo", "Pesquisador", role = c("aut", "cre"), email = "pesquisa@example.org")
+Description: Coleta, valida, versiona e analisa os dados abertos do
+    Sampa+Rural. Calcula proximidade por metricas geometricas e redes de
+    caminhada, bicicleta e automovel, oferece processamento em lote,
+    aplicacao Shiny, mapas e relatorios academicos reproduziveis.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends: R (>= 4.3.0)
+Imports:
+    arrow,
+    bslib,
+    DBI,
+    digest,
+    dodgr,
+    DT,
+    dplyr,
+    geosphere,
+    ggplot2,
+    htmltools,
+    httr2,
+    jsonlite,
+    leaflet,
+    readr,
+    readxl,
+    RSQLite,
+    sf,
+    shiny,
+    stats,
+    yaml,
+    zip
+Suggests:
+    golem,
+    httptest2,
+    knitr,
+    MASS,
+    mgcv,
+    osmextract,
+    pkgload,
+    renv,
+    rmarkdown,
+    roxygen2,
+    shinytest2,
+    spatstat.explore,
+    spatstat.geom,
+    spdep,
+    tarchetypes,
+    targets,
+    testthat (>= 3.0.0),
+    tidyr,
+    webfakes,
+    withr
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0

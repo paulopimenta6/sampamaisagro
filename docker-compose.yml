@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    command: ["R", "-q", "-e", "sampamaisrural::run_app(host='0.0.0.0', port=3838, launch.browser=FALSE)"]
+    ports: ["3838:3838"]
+    volumes:
+      - ./data:/srv/sampamaisrural/data:ro
+      - ./jobs:/srv/sampamaisrural/jobs
+      - ./outputs:/srv/sampamaisrural/outputs
+    restart: unless-stopped
+  worker:
+    build: .
+    command: ["Rscript", "scripts/worker.R"]
+    volumes:
+      - ./data:/srv/sampamaisrural/data:ro
+      - ./jobs:/srv/sampamaisrural/jobs
+      - ./outputs:/srv/sampamaisrural/outputs
+    restart: unless-stopped

@@ -1,0 +1,12 @@
+.git
+.Rproj.user
+.Rhistory
+.RData
+data
+jobs
+outputs
+renv/library
+renv/staging
+_targets
+*.Rcheck
+*.tar.gz

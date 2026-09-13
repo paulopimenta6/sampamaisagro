@@ -1,0 +1,1121 @@
+PLANEJAMENTO DO PROJETO SAMPA+RURAL
+Acessibilidade espacial, consultas de proximidade, mapas e relatórios estatísticos em R
+
+Data de elaboração: 13/09/2026
+Diretório do projeto: sampamaisrual
+Nome proposto para o pacote R: sampamaisrural
+
+
+1. VISÃO GERAL
+
+O projeto será desenvolvido integralmente em R e terá caráter acadêmico, visando
+servir como infraestrutura de pesquisa para um projeto de mestrado. A solução será
+composta por:
+
+- Um pacote R com as regras de negócio e métodos analíticos.
+- Um pipeline reproduzível para coleta, validação, transformação e análise.
+- Uma aplicação Shiny para consultas individuais e em lote.
+- Um motor de cálculo de diferentes métricas de distância.
+- Mapas interativos e estáticos adequados para uso acadêmico.
+- Relatórios estatísticos reproduzíveis nos formatos HTML e PDF.
+- Uma interface de linha de comando em R para lotes de grande porte.
+- Uma fila persistente no servidor acadêmico para trabalhos demorados.
+
+O foco científico principal será a acessibilidade espacial aos equipamentos
+registrados na plataforma Sampa+Rural. Como não serão incorporadas variáveis
+sociodemográficas, o projeto poderá produzir conclusões sobre disponibilidade,
+cobertura e acessibilidade geográfica, mas não sobre desigualdade social, demanda
+populacional ou equidade no acesso.
+
+O desenho de pesquisa será transversal, observacional e ecológico. As conclusões
+deverão ser proporcionais à qualidade e à cobertura dos dados, sem linguagem causal.
+
+
+2. SITUAÇÃO INICIAL E DIAGNÓSTICO DA FONTE
+
+O repositório local está vazio e o projeto deverá ser iniciado do zero.
+
+Em inspeção realizada em 13/09/2026, o catálogo oficial localizado em:
+
+https://sampamaisrural.prefeitura.sp.gov.br/api/data_reports
+
+apresentava 14 bases disponíveis em CSV e JSON. A base completa oficial estava em:
+
+https://sampamaisrural.prefeitura.sp.gov.br/api/data_reports/base-completa-sampa-rural.json
+
+O diagnóstico preliminar da base completa encontrou:
+
+- 4.238 registros publicados.
+- 2.796 registros na categoria Agricultura.
+- 1.098 registros na categoria Mercados.
+- 210 registros na categoria Iniciativas.
+- 133 registros em Turismo e Vivência Rural.
+- Um registro sem categoria preenchida.
+- 3.323 registros com latitude e longitude utilizáveis.
+- 915 registros sem latitude e longitude.
+- 3.319 registros sem CEP.
+- Pelo menos dois registros com coordenadas incompatíveis com o município de São
+  Paulo.
+- 28 pares de coordenadas repetidas, envolvendo 57 registros. Essas ocorrências não
+  devem ser automaticamente tratadas como duplicatas, pois equipamentos distintos
+  podem estar no mesmo endereço.
+- 154 nomes de perfil repetidos, que também não podem ser automaticamente eliminados.
+
+A ausência de coordenadas é desigual entre categorias, concentrando-se principalmente
+em Agricultura. Isso representa risco de viés de seleção espacial: mapas e medidas de
+proximidade baseados apenas em coordenadas existentes podem representar melhor algumas
+categorias que outras.
+
+O próprio portal informa que a plataforma é colaborativa e que realiza validação
+simples das contribuições, sem certificar integralmente a licitude ou a veracidade de
+informações fornecidas por terceiros. Essa limitação deverá ser apresentada em todos
+os relatórios.
+
+Os termos de uso estão disponíveis em:
+
+https://sampamaisrural.prefeitura.sp.gov.br/termos
+
+Os termos exigem atribuição ao Sampa+Rural, aos parceiros responsáveis pelos dados e
+à data de extração. Também restringem consultas automatizadas em massa sem autorização
+prévia. O usuário informou já possuir autorização por escrito. As condições específicas
+dessa autorização deverão ser documentadas e terão precedência sobre qualquer
+configuração técnica padrão do coletor.
+
+
+3. OBJETIVOS
+
+3.1. Objetivo geral
+
+Desenvolver uma infraestrutura científica e uma aplicação em R que permitam obter,
+validar, analisar e visualizar os dados abertos do Sampa+Rural e identificar os
+equipamentos mais próximos de uma ou várias origens informadas por CEP ou por
+latitude e longitude.
+
+3.2. Objetivos específicos
+
+- Automatizar de forma ética, controlada e auditável a obtenção das bases oficiais.
+- Preservar versões históricas dos dados e permitir a reprodução de qualquer análise.
+- Avaliar e documentar completude, consistência, duplicidades e qualidade espacial.
+- Converter CEPs em coordenadas, registrando a origem e as limitações da geocodificação.
+- Calcular métricas geométricas e distâncias pela rede viária.
+- Permitir buscas pelos k equipamentos mais próximos e por raio máximo.
+- Atender tanto consultas únicas quanto arquivos com grande quantidade de origens.
+- Criar mapas interativos para exploração e mapas estáticos para publicações.
+- Produzir relatórios estatísticos individuais e agregados.
+- Comparar a sensibilidade dos resultados ao método de distância utilizado.
+- Identificar e quantificar possíveis vieses causados por coordenadas ausentes.
+- Disponibilizar código, documentação e protocolo de pesquisa de forma transparente.
+
+
+4. CRITÉRIOS DE SUCESSO
+
+O projeto será considerado funcional quando:
+
+- Uma consulta válida por CEP retornar os equipamentos próximos e informar como o CEP
+  foi geocodificado.
+- Uma consulta válida por latitude e longitude produzir os mesmos resultados quando
+  executada individualmente, em lote ou pela linha de comando.
+- O usuário puder solicitar simultaneamente os k equipamentos mais próximos e os
+  equipamentos dentro de um raio.
+- Todas as métricas definidas neste documento forem calculadas com unidade, método,
+  modo de transporte, direção e versão dos dados documentados.
+- Linhas inválidas de um lote forem devolvidas em um relatório de erros sem interromper
+  as demais linhas válidas.
+- Registros sem coordenadas, fora da área de estudo ou não conectáveis à rede nunca
+  forem silenciosamente corrigidos ou descartados.
+- Mapas e relatórios puderem ser novamente gerados a partir do mesmo snapshot e do
+  mesmo arquivo renv.lock.
+- Um lote de referência com 100 mil origens puder ser executado em blocos, interrompido
+  e posteriormente retomado sem recalcular blocos concluídos.
+- A aplicação não realizar coleta da fonte oficial durante uma consulta de usuário.
+- A interface sempre mostrar a data dos dados utilizados e os devidos créditos.
+
+
+5. ARQUITETURA DO PROJETO
+
+5.1. Pacote R
+
+Será criado um pacote chamado sampamaisrural. Ele concentrará:
+
+- Clientes de coleta HTTP.
+- Leitura e normalização das bases.
+- Validação dos dados.
+- Geocodificação.
+- Construção das redes de transporte.
+- Cálculo das métricas de distância.
+- Busca top-k e por raio.
+- Análises estatísticas.
+- Preparação de mapas e relatórios.
+- Integração da aplicação Shiny e da interface de linha de comando.
+
+A lógica científica não deverá ser escrita diretamente dentro dos elementos reativos
+da aplicação. A interface Shiny chamará funções testáveis do pacote.
+
+5.2. Pipeline reproduzível
+
+O pipeline será implementado com targets e tarchetypes. Ele deverá separar claramente:
+
+1. Coleta dos dados brutos.
+2. Verificação de integridade.
+3. Normalização e criação do dicionário de dados.
+4. Validação espacial e tabular.
+5. Geocodificação derivada.
+6. Preparação da malha OSM.
+7. Construção dos grafos por modo de transporte.
+8. Criação dos objetos processados usados pela aplicação.
+9. Análises estatísticas.
+10. Mapas e relatórios.
+
+As dependências R serão congeladas com renv. A versão de R, bibliotecas do sistema,
+GDAL, GEOS, PROJ, Quarto e demais ferramentas também deverá ser registrada.
+
+5.3. Aplicação Shiny
+
+A aplicação será modularizada, preferencialmente com golem, e terá as seguintes áreas:
+
+- Consulta individual.
+- Envio e acompanhamento de lotes.
+- Resultados tabulares.
+- Mapas.
+- Estatísticas.
+- Qualidade dos dados.
+- Metodologia e fontes.
+- Downloads e relatórios.
+
+5.4. Processamento pesado
+
+O projeto terá dois meios equivalentes de processamento:
+
+- Fila assíncrona no servidor acadêmico.
+- Interface de linha de comando executada por R.
+
+A fila será persistida em SQLite com modo WAL. Workers R separados da aplicação
+executarão os trabalhos. Isso impedirá que uma sessão Shiny seja bloqueada por cálculos
+longos e permitirá retomada após reinicialização do servidor.
+
+
+6. COLETA WEB E VERSIONAMENTO
+
+6.1. Estratégia de coleta
+
+A página de dados é uma aplicação Angular. Portanto, a coleta principal deverá usar os
+endpoints oficiais utilizados pela própria página, em vez de tentar extrair registros
+de elementos HTML dinâmicos.
+
+Pacotes previstos:
+
+- httr2 para requisições HTTP.
+- jsonlite para JSON.
+- readr para CSV.
+- rvest para conteúdo estático de proveniência, termos ou metadados quando aplicável.
+- digest ou openssl para hashes dos arquivos.
+
+6.2. Fluxo de atualização
+
+- Consultar o endpoint data_reports.
+- Registrar todos os nomes, descrições, atributos e URLs encontrados.
+- Baixar as 14 bases nos formatos JSON e CSV.
+- Executar apenas uma requisição por vez.
+- Adotar uma requisição por segundo como padrão conservador, salvo regra diferente
+  presente na autorização escrita.
+- Executar atualizações semanais, desde que a autorização permita essa frequência.
+- Utilizar ETag e requisições condicionais para evitar downloads desnecessários.
+- Aplicar retentativas com espera exponencial e limite máximo.
+- Usar um User-Agent identificando o projeto acadêmico e um contato responsável.
+- Interromper a atualização se houver mudança inesperada de esquema ou conteúdo
+  incompatível.
+
+6.3. Proveniência de cada snapshot
+
+Cada arquivo bruto deverá ser preservado como somente leitura junto de:
+
+- URL de origem.
+- Data e hora da requisição.
+- Data de extração que deve aparecer nos créditos.
+- Cabeçalhos HTTP relevantes.
+- ETag e Last-Modified, quando existentes.
+- Hash SHA-256.
+- Tamanho do arquivo.
+- Status da requisição.
+- Versão do coletor.
+- Termos/licença aplicáveis.
+- Identificação do parceiro responsável pela base.
+
+Os dados brutos não deverão ser alterados. Correções e normalizações serão armazenadas
+em camadas derivadas.
+
+6.4. Uso das bases
+
+- A base completa será o catálogo canônico usado para as consultas.
+- As bases específicas serão preservadas para atributos adicionais, análises temáticas
+  e auditoria de consistência.
+- A equivalência entre registros de bases diferentes só será aceita quando as regras
+  determinísticas forem satisfeitas.
+- Correspondências ambíguas deverão ir para uma tabela de revisão manual.
+
+Como a fonte não fornece um identificador estável universal, serão criados:
+
+- record_version_id: hash imutável de um registro em um snapshot.
+- entity_id: identificador longitudinal atribuído por uma tabela de correspondência
+  auditável entre versões.
+- match_method e match_confidence: método e segurança da correspondência.
+
+Nenhum casamento aproximado deverá ser aprovado automaticamente quando houver mais de
+um candidato plausível.
+
+
+7. VALIDAÇÃO E QUALIDADE DOS DADOS
+
+Serão verificadas, no mínimo, as seguintes condições:
+
+- Presença e tipo dos campos obrigatórios.
+- Alterações inesperadas nos nomes das colunas.
+- Categorias e subcategorias novas, removidas ou renomeadas.
+- Latitude e longitude presentes em conjunto.
+- Latitude entre -90 e 90 e longitude entre -180 e 180.
+- Coordenadas dentro do município ou de uma margem explicitamente definida.
+- CEP normalizado com oito dígitos quando preenchido.
+- Duplicidades exatas.
+- Nomes repetidos.
+- Coordenadas compartilhadas por vários equipamentos.
+- Campos listados com tipos diferentes entre JSON e CSV.
+- Percentual de dados ausentes por categoria, fonte e snapshot.
+- Mudanças abruptas na quantidade de registros.
+
+Os registros serão classificados em estados como:
+
+- valid_source_coordinate.
+- missing_coordinate.
+- invalid_coordinate.
+- outside_study_area.
+- derived_geocode.
+- ambiguous_geocode.
+- non_routable.
+
+Registros com problemas serão mantidos em tabelas de quarentena, acompanhados do motivo.
+O relatório de qualidade será produzido antes da publicação de cada snapshot.
+
+
+8. GEOCODIFICAÇÃO
+
+8.1. Origens informadas por CEP
+
+A BrasilAPI CEP V2 será utilizada como serviço principal:
+
+https://brasilapi.com.br/docs#tag/CEP-V2
+
+A própria documentação informa que as coordenadas vêm do OpenStreetMap e estão sujeitas
+a erros. Portanto:
+
+- Todo resultado será armazenado em cache por CEP.
+- A resposta bruta e a data da consulta serão preservadas.
+- Município e UF serão validados.
+- O usuário poderá revisar e corrigir a coordenada antes do cálculo.
+- A aplicação informará que um CEP representa uma localização aproximada, e não
+  necessariamente um endereço ou imóvel exato.
+- Falhas de geocodificação não serão substituídas por coordenadas inventadas.
+
+8.2. Equipamentos sem coordenadas
+
+Quando houver endereço ou CEP suficiente, poderá ser criada uma coordenada derivada.
+Ela nunca substituirá os campos originais. Serão mantidos:
+
+- source_latitude e source_longitude.
+- derived_latitude e derived_longitude.
+- coordinate_origin.
+- geocoder.
+- geocoded_at.
+- geocode_status.
+- observações de ambiguidade.
+
+A análise principal utilizará somente coordenadas originais válidas. Uma análise de
+sensibilidade separada poderá incluir as coordenadas derivadas. A aplicação manterá a
+inclusão de geocodificações derivadas desligada por padrão.
+
+
+9. DADOS ESPACIAIS AUXILIARES
+
+Serão usados somente os dados auxiliares indispensáveis à medição espacial:
+
+- Limite oficial do município de São Paulo, preferencialmente da malha municipal do
+  IBGE com ano fixado no protocolo.
+- Rede OpenStreetMap obtida de snapshot da Geofabrik e recortada para o município com
+  margem de 10 km.
+- Mapas-base devidamente atribuídos.
+
+Não serão incorporadas, nesta versão, renda, população, vulnerabilidade, oferta de
+transporte, demanda ou outras covariáveis sociodemográficas.
+
+A margem de 10 km será usada para reduzir efeitos de borda e permitir rotas que saiam
+temporariamente do limite municipal. Origens fora da cobertura da rede poderão receber
+distâncias geométricas, mas as métricas de rede serão marcadas como indisponíveis.
+
+
+10. MÉTRICAS DE DISTÂNCIA
+
+Será criado um registro fechado e versionado de métricas. O termo “todas as distâncias”
+será operacionalizado como todas as métricas pertinentes definidas abaixo, evitando a
+inclusão arbitrária de infinitas variantes matemáticas.
+
+10.1. Distâncias geométricas
+
+1. Geodésica elipsoidal WGS84
+
+- Algoritmo de Karney, por geosphere::distGeo.
+- Unidade: metros.
+- Será a referência geométrica principal.
+
+2. Haversine
+
+- Distância de grande círculo sobre uma esfera.
+- Unidade: metros.
+- Usada para avaliar diferenças decorrentes da aproximação esférica.
+
+3. Euclidiana projetada
+
+- Pontos transformados para SIRGAS 2000 / UTM 23S, EPSG:31983.
+- Distância em linha reta no plano projetado.
+- Unidade: metros.
+
+4. Manhattan projetada
+
+- Soma das diferenças absolutas nos eixos do CRS projetado.
+- Será apresentada somente como sensibilidade matemática.
+- Não deverá ser interpretada como distância real pelas ruas.
+
+5. Chebyshev projetada
+
+- Maior diferença absoluta entre os eixos projetados.
+- Será apresentada somente como sensibilidade matemática.
+- Não deverá ser usada como medida principal de acesso.
+
+As distâncias Manhattan e Chebyshev dependem da orientação dos eixos. Essa limitação
+deve aparecer explicitamente nos relatórios.
+
+10.2. Distâncias pela rede
+
+Para cada modo a seguir serão calculados:
+
+- Menor caminho permitido, minimizando distância física.
+- Distância percorrida na rota mais rápida.
+- Tempo estimado da rota mais rápida.
+
+Modos:
+
+- Caminhada.
+- Bicicleta.
+- Automóvel.
+
+A menor distância pela rede de caminhada será o desfecho principal de acessibilidade.
+As outras métricas serão secundárias ou de sensibilidade.
+
+O motor será construído com osmextract, sf e dodgr. Serão usados os perfis foot,
+bicycle e motorcar. O projeto deverá registrar a versão da rede, o perfil, os pesos e
+as velocidades adotadas.
+
+10.3. Conexão dos pontos à rede
+
+- Cada origem e equipamento será associado ao nó elegível mais próximo.
+- A distância do ponto ao nó será somada à distância de rede como conector.
+- origin_snap_m e equipment_snap_m serão preservados.
+- Conectores acima de 250 metros receberão flag de baixa qualidade.
+- Conectores acima de 1.000 metros serão classificados como não roteáveis.
+- As regras poderão ser alteradas somente por nova versão do protocolo.
+
+10.4. Direção
+
+Distâncias de rede podem ser assimétricas por causa de sentidos únicos e restrições.
+O padrão será origem para equipamento. A interface permitirá solicitar o sentido
+inverso ou ambos, sempre registrando direction na saída.
+
+
+11. BUSCA DE EQUIPAMENTOS PRÓXIMOS
+
+11.1. Critérios simultâneos
+
+“Próximo” será definido por dois resultados simultâneos:
+
+- Posição entre os k equipamentos mais próximos, com k padrão igual a 10.
+- Pertencimento a um raio máximo, com padrão igual a 5.000 metros.
+
+Cada resultado terá rank e within_radius para cada métrica.
+
+11.2. Busca top-k exata para rede
+
+Para evitar uma matriz completa entre todas as origens e todos os equipamentos:
+
+1. Encontrar candidatos próximos com um índice espacial e a distância geodésica.
+2. Calcular as distâncias de rede para esses candidatos.
+3. Observar a distância de rede do k-ésimo colocado.
+4. Incluir todo equipamento ainda não calculado cuja distância geodésica seja menor ou
+   igual a esse valor.
+5. Recalcular e repetir até não existir candidato possível fora do conjunto.
+
+O procedimento é exato porque a distância geodésica é um limite inferior para uma rota
+pela rede. Essa propriedade será demonstrada por testes contra matrizes completas em
+redes pequenas.
+
+11.3. Busca por raio
+
+Para um raio de rede R, apenas equipamentos com distância geodésica menor ou igual a R
+precisam ser roteados. Os demais não poderiam pertencer ao raio pela rede.
+
+11.4. Equipamentos sem coordenadas
+
+Esses registros não poderão receber distância. Eles deverão aparecer nos indicadores
+de cobertura e exclusão, mas não nos rankings. A aplicação informará quantos registros
+da categoria selecionada ficaram fora da consulta por ausência ou invalidez espacial.
+
+
+12. CONTRATOS DE ENTRADA E SAÍDA
+
+12.1. Consulta individual
+
+Campos:
+
+- CEP com oito dígitos; ou
+- latitude e longitude decimais.
+- Categorias e subcategorias desejadas.
+- k, padrão 10.
+- radius_m, padrão 5.000.
+- Métricas e modos desejados.
+- Direção da rota.
+- Inclusão ou não de coordenadas derivadas.
+
+CEP e latitude/longitude serão mutuamente exclusivos. Quando ambos forem informados,
+a interface pedirá ao usuário que escolha um método, sem precedência silenciosa.
+
+12.2. Consulta em lote
+
+Formatos aceitos:
+
+- CSV UTF-8.
+- XLSX.
+
+Colunas:
+
+- query_id obrigatório e único.
+- cep opcional.
+- latitude opcional.
+- longitude opcional.
+- k opcional.
+- radius_m opcional.
+
+Cada linha deverá conter exatamente um método de origem: CEP ou o par completo de
+coordenadas. Linhas podem usar métodos diferentes dentro do mesmo arquivo.
+
+Erros por linha serão devolvidos em validation_errors.csv com query_id, campo, código
+do erro e mensagem. O restante do lote continuará sendo processado.
+
+12.3. Saída principal em formato longo
+
+Campos previstos:
+
+- job_id.
+- query_id.
+- origin_method.
+- origin_latitude.
+- origin_longitude.
+- origin_quality_flag.
+- equipment_id.
+- equipment_name.
+- category.
+- subcategory.
+- metric_id.
+- mode.
+- path_objective.
+- direction.
+- distance_m.
+- duration_min.
+- rank.
+- within_radius.
+- origin_snap_m.
+- equipment_snap_m.
+- status.
+- quality_flags.
+- sampa_snapshot.
+- osm_snapshot.
+- boundary_version.
+- analysis_version.
+
+Também serão oferecidos resumo largo, CSV, Parquet, GeoJSON e GeoPackage quando o tipo
+de resultado permitir.
+
+
+13. INTERFACE DE LOTE E CLI
+
+13.1. Fila no servidor
+
+- A interface aceitará inicialmente até 100 mil origens válidas por trabalho.
+- Trabalhos serão divididos em blocos de 500 origens.
+- Resultados intermediários serão escritos como Parquet particionado.
+- Cada bloco concluído terá checkpoint atômico.
+- A interface mostrará estado, progresso, estimativa, avisos e falhas.
+- O usuário poderá cancelar, retomar ou repetir um trabalho.
+- Cada usuário poderá ter um trabalho pesado ativo por vez.
+- O servidor iniciará com dois workers simultâneos, configuráveis.
+- Geometrias detalhadas de milhões de rotas não serão produzidas automaticamente.
+
+13.2. Interface de linha de comando
+
+A CLI deverá permitir:
+
+- Informar arquivo de entrada.
+- Informar diretório de saída.
+- Selecionar snapshot.
+- Selecionar métricas, categorias, modos, k, raio e direção.
+- Definir tamanho dos blocos.
+- Retomar um job existente.
+- Gerar manifestos e relatório final.
+
+A CLI não terá limite lógico de linhas, mas verificará memória, armazenamento disponível
+e estimativa do trabalho antes de iniciar.
+
+13.3. Equivalência
+
+Aplicação e CLI deverão chamar exatamente as mesmas funções internas. Um mesmo conjunto
+de parâmetros e snapshots deverá produzir saídas equivalentes, independentemente do
+meio de execução.
+
+
+14. MAPAS
+
+14.1. Mapas interativos
+
+Usar Leaflet para apresentar:
+
+- Origens.
+- Equipamentos, diferenciados por categoria.
+- Agrupamento de marcadores em escalas pequenas.
+- Raio solicitado.
+- Rotas selecionadas.
+- Filtros por categoria, subcategoria, fonte e qualidade da coordenada.
+- Pop-ups com nome, categoria, distância, modo, snapshot e flags.
+- Alternância entre métricas.
+- Legendas e atribuição das fontes.
+
+Rotas detalhadas serão calculadas e desenhadas sob demanda para pares selecionados.
+Grandes lotes serão apresentados por agregações, superfícies e amostras.
+
+14.2. Mapas estáticos acadêmicos
+
+Usar ggplot2 e/ou tmap para produzir figuras com:
+
+- Título e subtítulo informativos.
+- Escala gráfica.
+- Norte.
+- Legenda acessível.
+- Paleta adequada a daltonismo.
+- CRS documentado.
+- Fonte e data da extração.
+- Resolução apropriada para publicação.
+- Identificador da figura e parâmetros usados.
+
+14.3. Produtos cartográficos
+
+- Inventário de equipamentos.
+- Completude espacial.
+- Densidade por categoria.
+- Distância ao equipamento mais próximo.
+- Cobertura por raio.
+- Diferenças entre métricas.
+- Desacordo do equipamento classificado em primeiro lugar.
+- Rotas individuais.
+- Registros excluídos ou de baixa qualidade.
+
+
+15. PLANO ESTATÍSTICO
+
+15.1. Unidade de análise
+
+- Registro publicado no Sampa+Rural para qualidade e inventário.
+- Ponto de equipamento para padrão espacial.
+- Origem de consulta para resultados individuais ou amostrais.
+- Célula hexagonal para cobertura territorial e modelagem espacial.
+
+15.2. Grade territorial
+
+Será construída uma grade hexagonal com lado ou resolução operacional de 500 metros,
+recortada pelo limite municipal. Para cada centroide e categoria serão calculados:
+
+- Distância ao equipamento mais próximo.
+- Quantidade de equipamentos nos raios de 1, 3, 5 e 10 km.
+- Cobertura por cada métrica.
+- Resultado da métrica principal de caminhada em rede.
+- Diferenças e concordância entre métricas.
+
+A cobertura será territorial, e não populacional. Resultados por área não deverão ser
+descritos como proporção da população atendida.
+
+15.3. Estatísticas descritivas
+
+- Número de registros por categoria, subcategoria, fonte, zona e distrito.
+- Percentuais de preenchimento por variável.
+- Coordenadas ausentes e inválidas por grupo.
+- Mediana, média, desvio-padrão, intervalo interquartil e quantis das distâncias.
+- Distribuições dos tempos estimados.
+- Percentual de origens cobertas em cada raio.
+- Percentual de equipamentos não roteáveis.
+- Distância de conexão à rede.
+- Mudanças entre snapshots.
+
+Como a base representa o censo dos registros publicados em uma data, não serão usados
+testes de significância para simples totais ou percentuais de completude.
+
+15.4. Comparação das métricas
+
+- Correlação de postos de Kendall entre rankings.
+- Concordância do primeiro colocado.
+- Interseção entre conjuntos top-k.
+- Diferença absoluta e relativa das distâncias.
+- Mudança de classificação dentro/fora dos raios.
+- Comparação das distribuições por categoria e região.
+- Sensibilidade à resolução da grade.
+
+15.5. Padrão espacial de pontos
+
+Serão consideradas:
+
+- Densidade kernel por categoria.
+- Distribuição das distâncias ao vizinho mais próximo.
+- Função K com correção de borda.
+- Função K inhomogênea.
+- Envelopes Monte Carlo com sementes registradas.
+
+Essas análises serão explicitamente classificadas como exploratórias. A hipótese de
+aleatoriedade espacial completa é forte e potencialmente inadequada ao ambiente urbano;
+por isso, a análise inhomogênea será a principal sensibilidade.
+
+15.6. Modelagem
+
+As contagens por célula hexagonal poderão ser modeladas com:
+
+- Poisson como modelo inicial.
+- Binomial negativa quando houver sobredispersão.
+- GAM espacial com suavização das coordenadas e efeitos por categoria.
+- Offset igual ao logaritmo da área efetivamente observada da célula.
+
+Especificação conceitual:
+
+contagem por hexágono e categoria ~ categoria + suavização espacial por categoria +
+offset(log(área observada))
+
+Diagnósticos obrigatórios:
+
+- Sobredispersão.
+- Excesso de zeros.
+- Resíduos e observações influentes.
+- Autocorrelação espacial residual por Moran’s I.
+- Comparação por AIC/BIC quando apropriado.
+- Validação espacial em blocos.
+- Estabilidade dos efeitos.
+
+Se o modelo não apresentar diagnóstico aceitável, seus resultados não serão interpretados.
+O relatório utilizará análises descritivas e registrará por que o modelo foi rejeitado.
+
+15.7. Inferência e múltiplas comparações
+
+- A distância mínima em rede a pé será o desfecho principal.
+- As demais métricas e comparações serão secundárias.
+- Comparações múltiplas secundárias usarão FDR de Benjamini-Hochberg.
+- Serão reportados tamanhos de efeito e intervalos de confiança de 95%.
+- Valores-p serão exatos quando aplicáveis, sem depender apenas do limiar de 0,05.
+- Ausência de significância não será interpretada como prova de ausência de efeito.
+- Importância estatística não será confundida com importância prática.
+
+15.8. Dados ausentes e sensibilidade
+
+Análise principal:
+
+- Somente equipamentos com coordenadas originais válidas.
+
+Análises de sensibilidade:
+
+- Inclusão de coordenadas derivadas com qualidade aceitável.
+- Exclusão de conectores de rede considerados longos.
+- Diferentes resoluções da grade.
+- Diferentes snapshots da rede OSM.
+
+O relatório comparará categoria, fonte e outros atributos disponíveis entre registros
+incluídos e excluídos. A diferença será tratada como potencial viés de seleção, e não
+como mero problema técnico.
+
+
+16. RELATÓRIOS
+
+Os relatórios serão escritos em Quarto e renderizados em HTML e PDF. Dados derivados,
+tabelas e objetos espaciais também serão disponibilizados para reprodução.
+
+16.1. Relatório individual
+
+- Identificação da consulta.
+- Origem e método de geocodificação.
+- Data e qualidade dos dados.
+- Equipamentos top-k.
+- Equipamentos dentro do raio.
+- Comparação das métricas.
+- Rotas por modo.
+- Mapa.
+- Flags e registros não roteáveis.
+- Limitações do CEP, da rede e dos dados.
+- Referências e atribuições.
+
+16.2. Relatório de lote
+
+- Resumo da validação da entrada.
+- Quantidade de origens processadas e rejeitadas.
+- Cobertura por categoria e raio.
+- Estatísticas das distâncias e tempos.
+- Concordância entre métricas.
+- Mapas agregados.
+- Distribuição territorial.
+- Qualidade dos equipamentos e das origens.
+- Manifesto dos parâmetros e snapshots.
+- Apêndice de erros por linha.
+
+16.3. Relatório científico geral
+
+- Perguntas e hipóteses preregistradas.
+- Fontes e processo de coleta.
+- Dicionário dos dados.
+- Critérios de inclusão e exclusão.
+- Qualidade e completude.
+- Métodos espaciais e estatísticos.
+- Resultados primários e secundários.
+- Diagnósticos dos modelos.
+- Análises de sensibilidade.
+- Limitações e explicações alternativas.
+- Distinção entre observação e interpretação.
+- Materiais de reprodutibilidade.
+
+
+17. RIGOR ACADÊMICO E CIÊNCIA ABERTA
+
+- Elaborar perguntas específicas, mensuráveis e falseáveis.
+- Preregistrar hipóteses, métrica principal, exclusões e plano estatístico no OSF.
+- Distinguir análises confirmatórias de análises exploratórias.
+- Adaptar a lista STROBE ao desenho transversal e espacial.
+- Nunca inferir causalidade a partir das associações observadas.
+- Registrar todos os desvios do protocolo.
+- Publicar resultados negativos ou inconclusivos.
+- Armazenar seeds, sessionInfo(), parâmetros, hashes e renv.lock.
+- Disponibilizar código aberto e documentação suficiente para replicação.
+- Depositar dados em OSF ou Zenodo apenas após confirmar a licença de redistribuição
+  de cada parceiro.
+- Quando a redistribuição não for permitida, publicar URLs, hashes, manifestos e scripts
+  que permitam reconstruir os dados.
+- Criar um diagrama científico do fluxo: coleta, validação, geocodificação, distâncias,
+  estatística, aplicação e relatórios.
+
+
+18. ÉTICA, PRIVACIDADE E SEGURANÇA
+
+Embora os registros sejam públicos, disponibilidade pública não elimina a necessidade
+de uso ético e minimização de dados.
+
+- Campos diretos de contato não serão usados no conjunto analítico.
+- E-mails e telefones não aparecerão por padrão em relatórios ou exportações.
+- A aplicação deverá encaminhar o usuário ao perfil público original quando apropriado.
+- CEPs e coordenadas enviados pelos usuários não serão gravados em logs.
+- Arquivos enviados e resultados serão removidos automaticamente após sete dias.
+- Os logs usarão apenas job_id, query_id anonimizado e informações técnicas.
+- O servidor acadêmico deverá exigir autenticação.
+- Os diretórios dos jobs serão isolados por usuário.
+- Mapas de residências ou locais sensíveis deverão ser revisados antes da publicação.
+- O protocolo será submetido à avaliação institucional de ética e proteção de dados
+  caso as origens representem participantes, domicílios ou dados pessoais de pesquisa.
+
+
+19. TESTES
+
+19.1. Testes unitários
+
+- Fórmulas de todas as métricas geométricas.
+- Transformações de CRS e unidades.
+- Ordenação, empates e rankings.
+- Busca top-k e por raio.
+- CEP válido, inválido, inexistente e fora de São Paulo.
+- Coordenadas incompletas, invertidas, fora dos limites e ausentes.
+- Direção das rotas.
+- Conectores e limites de snap.
+- Equipamentos sem coordenadas.
+- Falhas parciais em lote.
+- Geração de identificadores determinísticos.
+
+19.2. Testes da rede
+
+- Rede OSM pequena e controlada como fixture.
+- Caminhos esperados para caminhada, bicicleta e automóvel.
+- Sentidos únicos.
+- Áreas desconectadas.
+- Menor caminho versus rota mais rápida.
+- Propriedade de que a distância de rede não é menor que a geodésica, salvo tolerância
+  numérica e regras documentadas de snap.
+- Equivalência entre a busca iterativa e uma matriz completa.
+
+19.3. Testes da coleta
+
+- Endpoint disponível e indisponível.
+- ETag com resposta 304.
+- Timeout e retentativas.
+- Arquivo truncado ou inválido.
+- Mudança de esquema.
+- Nova categoria.
+- Alteração abrupta da quantidade de registros.
+- Igualdade e diferenças esperadas entre JSON e CSV.
+
+As requisições serão simuladas nos testes para evitar dependência da internet.
+
+19.4. Testes de integração
+
+- Pipeline completo usando fixtures pequenas.
+- Criação e retomada de jobs.
+- Equivalência Shiny/CLI.
+- Exportação CSV, Parquet, GeoJSON e GeoPackage.
+- Renderização Quarto em HTML e PDF.
+- Mapas interativos e estáticos.
+- Limpeza automática de jobs expirados.
+
+19.5. Testes da aplicação
+
+Usar shinytest2 para:
+
+- Consulta por CEP.
+- Consulta por coordenadas.
+- Seleção de filtros.
+- Upload de lote.
+- Erro parcial.
+- Acompanhamento da fila.
+- Cancelamento e retomada.
+- Download de tabelas, mapas e relatórios.
+
+19.6. Validação científica e visual
+
+- Auditoria manual estratificada de rotas.
+- Inspeção de outliers espaciais.
+- Comparação de pares de coordenadas conhecidos.
+- Revisão dos mapas para evitar símbolos ou escalas enganosas.
+- Revisão dos textos para impedir afirmações causais ou populacionais indevidas.
+
+19.7. Teste de desempenho
+
+Servidor de referência mínimo:
+
+- 8 vCPU.
+- 32 GB de RAM.
+- 250 GB de SSD.
+
+Benchmark:
+
+- 100 mil origens únicas.
+- Todas as métricas geométricas.
+- Três modos de rede.
+- Top-10 e raio padrão.
+- Conclusão em até 24 horas.
+- Pico de memória inferior a 70% do total alocado.
+- Retomada sem recalcular blocos concluídos.
+- Resultados de uma amostra idênticos ao cálculo não particionado.
+
+
+20. IMPLANTAÇÃO E OPERAÇÃO
+
+- Criar imagem Docker reproduzível.
+- Incluir R, dependências compiladas, GDAL, GEOS, PROJ, Quarto e TinyTeX.
+- Separar o serviço Shiny dos workers de lote.
+- Manter volume persistente para snapshots, fila e resultados temporários.
+- Delegar autenticação ao ambiente acadêmico ou proxy institucional.
+- Implementar health check da aplicação e dos workers.
+- Monitorar tempo por bloco, falhas, espaço em disco e tamanho da fila.
+- Criar alerta para mudança do esquema da fonte.
+- Registrar versão do código e snapshot em cada resultado.
+- Nunca incluir CEPs ou coordenadas de usuários nos logs operacionais.
+
+
+21. PRINCIPAIS PACOTES E FERRAMENTAS PREVISTOS
+
+Infraestrutura e reprodução:
+
+- renv.
+- targets.
+- tarchetypes.
+- testthat.
+
+Coleta e dados:
+
+- httr2.
+- jsonlite.
+- readr.
+- readxl.
+- rvest.
+- dplyr, tidyr e purrr.
+- arrow para Parquet.
+- DBI e RSQLite para a fila.
+
+Espacial e roteamento:
+
+- sf.
+- s2.
+- geosphere.
+- osmextract.
+- dodgr.
+- spatstat.
+- spdep.
+
+Estatística:
+
+- stats.
+- MASS ou glmmTMB para binomial negativa, conforme validação de implementação.
+- mgcv para GAM.
+- sandwich ou estimadores equivalentes quando erros robustos forem necessários.
+- ferramentas de diagnóstico de resíduos e sobredispersão.
+- modelsummary e gt para tabelas.
+
+Aplicação e visualização:
+
+- shiny.
+- bslib.
+- golem.
+- leaflet.
+- ggplot2.
+- tmap.
+- shinytest2.
+
+Relatórios:
+
+- Quarto.
+- knitr.
+- TinyTeX para PDF.
+
+A seleção final de versões ficará registrada em renv.lock. Dependências alternativas
+só serão adotadas após testes e registro da justificativa.
+
+
+22. CRONOGRAMA DE 12 SEMANAS
+
+Semanas 1 e 2: protocolo e estrutura
+
+- Formalizar perguntas de pesquisa.
+- Registrar o escopo e as limitações inferenciais.
+- Organizar e anexar as condições da autorização de coleta.
+- Criar o pacote R, renv e pipeline targets.
+- Preparar protocolo de ciência aberta e gestão de dados.
+- Iniciar o preregistro.
+
+Semanas 3 e 4: coleta e qualidade
+
+- Implementar o cliente do catálogo e dos downloads.
+- Criar snapshots e manifestos.
+- Construir o dicionário de dados.
+- Normalizar as 14 bases.
+- Implementar validações tabulares e espaciais.
+- Gerar o primeiro relatório de qualidade.
+
+Semanas 5 a 7: geocodificação e distâncias
+
+- Implementar geocodificação por CEP e cache.
+- Obter e recortar a rede OSM.
+- Construir os grafos por modo.
+- Implementar as métricas geométricas.
+- Implementar as métricas de rede.
+- Implementar conectores, flags e direção.
+- Implementar a busca top-k exata e a busca por raio.
+- Criar a CLI e os checkpoints iniciais.
+
+Semanas 8 e 9: estatística, mapas e relatórios
+
+- Criar a grade hexagonal.
+- Produzir medidas de cobertura territorial.
+- Implementar comparações entre métricas.
+- Implementar padrão espacial de pontos.
+- Ajustar e diagnosticar os modelos previstos.
+- Criar mapas interativos e estáticos.
+- Criar templates Quarto HTML e PDF.
+
+Semanas 10 e 11: aplicação e lotes
+
+- Construir os módulos Shiny.
+- Implementar a fila SQLite e workers.
+- Criar upload, progresso, retomada e downloads.
+- Implementar controles de acesso e privacidade.
+- Integrar consultas individuais, lotes, mapas e relatórios.
+
+Semana 12: validação e publicação
+
+- Executar testes unitários, integração e interface.
+- Auditar amostra de rotas e registros problemáticos.
+- Realizar o benchmark de 100 mil origens.
+- Finalizar documentação técnica e acadêmica.
+- Implantar no servidor acadêmico.
+- Congelar a versão do código e dos dados usada no mestrado.
+- Depositar materiais permitidos no repositório de ciência aberta.
+
+
+23. ENTREGÁVEIS
+
+- Pacote R sampamaisrural.
+- Arquivo renv.lock.
+- Pipeline targets completo.
+- Coletor web/API documentado.
+- Snapshots e manifestos de proveniência.
+- Dicionário de dados.
+- Relatórios de qualidade.
+- Motor de distâncias geométricas e de rede.
+- Interface de linha de comando.
+- Aplicação Shiny modular.
+- Fila persistente de processamento.
+- Mapas interativos.
+- Mapas estáticos publicáveis.
+- Relatório individual HTML/PDF.
+- Relatório de lote HTML/PDF.
+- Relatório científico geral.
+- Testes automatizados.
+- Imagem Docker.
+- Manual de instalação, operação e reprodução.
+- Protocolo/preregistro acadêmico.
+- Diagrama científico da arquitetura e do fluxo de dados.
+
+
+24. PREMISSAS E DECISÕES FIXADAS
+
+- A aplicação será hospedada em servidor acadêmico autenticado.
+- A autorização escrita de coleta está disponível e será respeitada.
+- As variáveis analíticas virão do Sampa+Rural.
+- OSM, geocodificação e limite municipal serão apenas infraestrutura de medição.
+- Não serão incluídos dados de população ou renda nesta versão.
+- A caminhada em rede será a métrica principal de acessibilidade.
+- A análise primária usará coordenadas originais válidas.
+- Coordenadas derivadas serão usadas somente em sensibilidade e estarão desligadas por
+  padrão na aplicação.
+- Consultas individuais e lotes usarão o mesmo motor.
+- O servidor oferecerá fila e a solução também terá CLI.
+- A interface aceitará inicialmente até 100 mil origens por job.
+- A CLI será limitada apenas pelos recursos computacionais disponíveis.
+- Os relatórios serão produzidos em HTML, PDF e formatos de dados reproduzíveis.
+- O projeto não fará afirmações causais ou de equidade populacional.
+- Python não será uma dependência. Os princípios de diagnóstico e inferência da skill
+  statsmodels-statistical-modeling serão traduzidos para funções e pacotes equivalentes
+  em R.
+- A skill scientific-critical-thinking orienta o preregistro, o tratamento dos vieses,
+  a separação entre análises confirmatórias e exploratórias, os diagnósticos e a
+  proporcionalidade das conclusões.
+- A busca realizada com find-skills não identificou uma skill adicional suficientemente
+  específica e consolidada para justificar sua instalação neste momento.
+
+
+25. LIMITAÇÕES QUE DEVEM ACOMPANHAR O PROJETO
+
+- A plataforma representa os registros publicados, não todos os equipamentos rurais ou
+  relacionados à alimentação existentes em São Paulo.
+- Coordenadas ausentes podem introduzir viés de seleção.
+- CEPs são aproximações espaciais e podem ter erros de geocodificação.
+- A rede OSM pode estar incompleta, especialmente em áreas rurais e acessos privados.
+- Perfis e velocidades de caminhada, bicicleta e carro são modelos, não viagens medidas.
+- Menor distância e menor tempo representam conceitos diferentes.
+- Acessibilidade territorial não equivale a acessibilidade da população.
+- Densidade de registros não mede qualidade, capacidade ou utilização do equipamento.
+- Associações e padrões espaciais não estabelecem causalidade.
+- Resultados são dependentes da data do Sampa+Rural, da rede OSM, da malha municipal e
+  das decisões analíticas versionadas.
+
+
+FIM DO PLANEJAMENTO

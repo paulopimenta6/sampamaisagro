@@ -1,0 +1,15 @@
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+renv/library/
+renv/staging/
+data/raw/
+data/cache/
+data/processed/
+data/osm/
+jobs/
+outputs/
+_targets/
+*.Rcheck/
+*.tar.gz

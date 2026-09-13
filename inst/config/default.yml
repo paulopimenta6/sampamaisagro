@@ -1,0 +1,26 @@
+data_dir: data
+jobs_dir: jobs
+reports_dir: outputs/reports
+catalog_url: https://sampamaisrural.prefeitura.sp.gov.br/api/data_reports
+complete_slug: base-completa-sampa-rural
+terms_url: https://sampamaisrural.prefeitura.sp.gov.br/termos
+user_agent: "sampamaisrural-academic/0.1.0 (contato: pesquisa@example.org)"
+collection:
+  authorized: false
+  requests_per_second: 1
+  max_tries: 4
+geocoding:
+  endpoint: https://brasilapi.com.br/api/cep/v2
+  require_sao_paulo: false
+  requests_per_second: 2
+spatial:
+  geographic_crs: 4326
+  projected_crs: 31983
+  bbox: {xmin: -47.10, ymin: -24.10, xmax: -46.20, ymax: -23.30}
+  snap_warning_m: 250
+  snap_max_m: 1000
+proximity: {default_k: 10, default_radius_m: 5000, initial_candidates: 50}
+batch: {chunk_size: 500, web_max_rows: 100000, retention_days: 7, max_active_per_owner: 1}
+network:
+  modes: [foot, bicycle, motorcar]
+  snapshot: null
