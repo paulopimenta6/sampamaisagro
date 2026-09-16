@@ -19,6 +19,76 @@ Se faltarem pacotes, restaure o ambiente com renv::restore(). Os comandos precis
 
 O mapa inicial já mostra os dados reais guardados no computador. Não é uma simulação.
 
+### 1.1. Sua feira está no notebook, mas você está em outro computador? 🚇
+
+Imagine um túnel que leva a janela do seu navegador até a aplicação no notebook.
+Esse é o **túnel SSH**. O notebook continua fazendo os cálculos e guardando os
+dados; o outro computador serve para você ver a tela e fazer as consultas.
+
+~~~text
+Seu navegador → túnel SSH → aplicação no notebook
+~~~
+
+Você vai usar **dois terminais**, com tarefas diferentes. O projeto e os dados
+precisam estar preparados no notebook, e você já deve conseguir acessá-lo por SSH.
+
+#### Passo A — Abra a feira no notebook
+
+Na sessão SSH conectada ao notebook, execute:
+
+~~~bash
+cd /home/paulo/Documentos/meus_codigos/sampamaisrual
+
+R_PROFILE_USER=/dev/null Rscript -e 'pkgload::load_all(".", quiet=TRUE); run_app(host="127.0.0.1", port=3939, launch.browser=FALSE)'
+~~~
+
+Se a pasta do projeto for diferente, ajuste o caminho. Espere aparecer
+`Listening on http://127.0.0.1:3939`. É o aviso de que a feira abriu!
+**Deixe essa sessão funcionando.**
+
+#### Passo B — Abra o túnel no computador que está com você
+
+Abra **outro terminal no computador onde você usará o navegador**. Não execute
+este passo dentro da sessão SSH do notebook. Digite:
+
+~~~bash
+ssh -N -L 127.0.0.1:3939:127.0.0.1:3939 paulo@IP_DO_NOTEBOOK
+~~~
+
+Troque `IP_DO_NOTEBOOK` pelo IP ou nome que você usa para entrar no notebook via
+SSH. Se seu usuário não for `paulo`, troque esse nome também.
+
+O terminal pode ficar quietinho, sem novas mensagens. Isso é normal: ele está
+mantendo o túnel aberto. **Não feche esse terminal.**
+
+#### Passo C — Espie pela janela do navegador
+
+No computador que está com você, abra:
+
+[http://localhost:3939](http://localhost:3939)
+
+Pronto: a tela aparece aí, mas os cálculos continuam no notebook. Não é preciso
+copiar a pasta de dados para o computador do navegador.
+
+#### E se a feira já estiver aberta?
+
+Não precisa iniciar a aplicação outra vez! Veja qual porta aparece na mensagem
+`Listening on http://127.0.0.1:PORTA` e use esse número no **último `3939`** do
+comando SSH. O primeiro `3939` é a porta que você abrirá no navegador.
+
+Se essa primeira porta estiver ocupada no seu computador, troque somente ela
+por `9393` e use `http://localhost:9393` no navegador.
+
+**Lembretes para o túnel não fechar:**
+
+- Mantenha as duas sessões abertas.
+- Deixe o notebook ligado, conectado e sem entrar em suspensão; fechar a tampa
+  pode colocá-lo para dormir.
+- Os dados continuam offline, mas os computadores precisam conseguir conversar
+  pela conexão SSH.
+- Não é preciso abrir a porta `3939` no roteador nem mudar o host para `0.0.0.0`.
+- Para fechar só o túnel, pressione **Ctrl+C** no terminal do passo B.
+
 ## 2. Encontre algo perto de um CEP 📍
 
 1. Vá à aba **Explorar**.
@@ -152,7 +222,16 @@ flowchart LR
 
 Na aba **Banco offline**, confira os arquivos, formatos, contagens e os CEPs disponíveis.
 
-Os arquivos principais ficam em:
+Essa despensa é uma pasta de verdade no computador que executa a aplicação!
+Nesta instalação, ela fica em:
+
+~~~text
+/home/paulo/Documentos/meus_codigos/sampamaisrual/data/
+~~~
+
+Se você está acessando por SSH, a despensa continua no notebook; o computador do
+navegador não precisa guardar outra cópia. Dentro da pasta do projeto, os arquivos
+principais ficam em:
 
 ~~~text
 data/raw/          alimentos na embalagem original: CSV e JSON
@@ -185,13 +264,53 @@ Depois abra a aplicação novamente. O projeto não inclui todos os CEPs do Bras
 Rscript scripts/prepare_offline.R
 ~~~
 
-Essa etapa pode demorar, principalmente para construir as redes. Para atualizar só o cadastro:
+Essa etapa pode demorar, principalmente para construir as redes. Ela preserva uma
+base já existente; para buscar novidades no cadastro, siga o passo a passo abaixo.
+
+### Chegaram dados novos: como reabastecer a despensa? 🥬
+
+Sim, a aplicação consegue usar novos registros publicados no Sampa+Rural!
+Mas ela **não vai às compras sozinha**: a atualização é manual, não automática.
+
+1. Pare a aplicação. Se ela estiver rodando no terminal, pressione **Ctrl+C no
+   terminal do R**. Se estiver usando SSH, pode deixar o terminal do túnel aberto.
+2. Com internet no notebook, rode os comandos abaixo. Ajuste o caminho se a pasta
+   do projeto for diferente.
 
 ~~~bash
-Rscript scripts/update_data.R
+cd /home/paulo/Documentos/meus_codigos/sampamaisrual
+R_PROFILE_USER=/dev/null Rscript scripts/update_data.R
 ~~~
 
-A atualização cria um snapshot novo. Os arquivos anteriores permanecem preservados.
+3. Espere a atualização terminar sem erros.
+4. Abra a aplicação novamente pelo **Run App** ou pelo mesmo comando usado antes.
+   No acesso por SSH, mantenha a mesma porta, como `3939` no exemplo da seção 1.1.
+
+Durante a atualização, o programa busca o catálogo oficial, baixa os CSV e JSON,
+confere os registros e reorganiza a base usada nas consultas.
+
+Cada download fica numa pasta datada em `data/raw/`: é um **snapshot**, uma
+fotografia do cadastro naquele momento. As fotografias antigas ficam guardadas;
+a base de uso atual em `data/processed/` é regenerada com os dados da nova coleta.
+Ela é salva em RDS, CSV, JSON e Parquet.
+
+**Apertar F5 no navegador não troca os ingredientes da aplicação.** É preciso
+reiniciar o programa R, porque ele carrega a base ao abrir. Depois, confira a
+identificação do snapshot na tela e visite a aba **Banco offline**.
+
+Uma nova feira ou horta poderá aparecer nos mapas e nas estatísticas se tiver
+coordenadas válidas na área de estudo e passar pelos filtros escolhidos. Não ter
+coordenadas continua sendo uma limitação: o programa não inventa a localização.
+
+Depois de reabastecer e reabrir a aplicação, você pode voltar a consultar sem internet.
+
+**Duas pegadinhas para evitar:**
+
+- Atualizar os equipamentos não atualiza automaticamente as vias nem prepara
+  novos CEPs. São prateleiras diferentes, com etapas próprias de preparação.
+- Editar um CSV à mão não muda a tela automaticamente. O arquivo que a aplicação
+  lê primeiro é `data/processed/equipment.rds`, gerado pelo processamento; as
+  cópias CSV e JSON não funcionam como uma planilha de edição sincronizada.
 
 ## 11. Leve o resultado com você 📄
 

@@ -38,6 +38,55 @@ R_PROFILE_USER=/dev/null Rscript scripts/run_app.R
 
 O CEP **05586-001** está preparado para teste. O mapa inicial já mostra registros reais, antes da primeira consulta.
 
+## Acessar a aplicação por SSH
+
+Use um **túnel SSH** para abrir, no navegador de outro computador, a aplicação
+que está rodando no notebook. O processamento e os dados permanecem no notebook;
+não é necessário expor a porta da aplicação à rede.
+
+### 1. No notebook, pela sessão SSH
+
+Com o projeto e os dados já preparados, inicie a aplicação com uma porta fixa:
+
+~~~bash
+cd /home/paulo/Documentos/meus_codigos/sampamaisrual
+
+R_PROFILE_USER=/dev/null Rscript -e 'pkgload::load_all(".", quiet=TRUE); run_app(host="127.0.0.1", port=3939, launch.browser=FALSE)'
+~~~
+
+Ajuste o caminho se o projeto estiver em outra pasta. Aguarde a mensagem
+`Listening on http://127.0.0.1:3939` e mantenha essa sessão aberta.
+
+### 2. No computador onde você usará o navegador
+
+Abra **outro terminal, nesse computador**, e execute:
+
+~~~bash
+ssh -N -L 127.0.0.1:3939:127.0.0.1:3939 paulo@IP_DO_NOTEBOOK
+~~~
+
+Substitua `IP_DO_NOTEBOOK` pelo IP ou nome usado para acessar o notebook via SSH
+e ajuste `paulo` se o usuário for outro. O comando pode ficar sem mostrar mensagens:
+isso é normal. Deixe esse terminal aberto também.
+
+### 3. Abra o navegador desse computador
+
+Acesse [http://localhost:3939](http://localhost:3939). Esse endereço aponta para a
+entrada local do túnel, que encaminha a conexão para a aplicação no notebook.
+
+- **A aplicação já está rodando?** Não inicie outra instância. Confira a porta
+  na mensagem `Listening on http://127.0.0.1:PORTA` e substitua somente a última
+  `3939` do comando SSH por essa porta. A primeira `3939` é a porta local do navegador.
+- **A porta local está ocupada?** Troque a primeira `3939` por `9393` e abra
+  `http://localhost:9393`. Mantenha a última porta igual à usada pela aplicação.
+- **A página não abre?** Confira se a aplicação iniciou e se o túnel continua
+  conectado. O notebook precisa permanecer ligado, conectado e sem entrar em suspensão.
+- Não é necessário alterar o host da aplicação para `0.0.0.0` nem abrir a porta
+  `3939` no roteador: o acesso usa a conexão SSH existente.
+
+Os dados continuam locais, mas o acesso remoto exige conectividade entre os dois
+computadores. Para encerrar apenas o túnel, pressione **Ctrl+C** no terminal do passo 2.
+
 ## Preparar uma instalação nova (com internet)
 
 R ≥ 4.3; restaure as dependências com renv::restore(). Para mapas/rede, reserve memória e disco: o extrato testado contém 331 mil vias, e os três grafos ocupam aproximadamente 1,6 GB em disco antes de otimizações. A preparação pode levar dezenas de minutos; use uma máquina com cerca de 16 GB de RAM. As consultas geométricas são muito mais leves. PDF requer Pandoc e LaTeX.
@@ -61,11 +110,62 @@ Rscript scripts/update_data.R data/raw/20260914T011240Z
 Rscript scripts/prepare_network.R --offline
 ~~~
 
+## Atualizar quando houver novos registros
+
+A aplicação consegue baixar e usar novos dados publicados no Sampa+Rural, mas
+**a atualização atualmente é manual**. Ela não busca novidades automaticamente
+ao abrir a tela nem mantém uma sincronização em tempo real com o site.
+
+Encerre a aplicação antes de atualizar. Se ela estiver no terminal, pressione
+**Ctrl+C no terminal que executa o R**, não no terminal do túnel SSH. Depois,
+no notebook com internet, execute:
+
+~~~bash
+cd /home/paulo/Documentos/meus_codigos/sampamaisrual
+R_PROFILE_USER=/dev/null Rscript scripts/update_data.R
+~~~
+
+Ajuste o caminho se o projeto estiver em outra pasta. Esse comando:
+
+- Consulta novamente o catálogo oficial e baixa os CSV e JSON disponíveis.
+- Guarda os downloads em uma nova pasta datada dentro de `data/raw/`, preservando
+  as cópias anteriores.
+- Valida, remove repetições exatas, classifica e regenera a base consolidada em
+  `data/processed/`, nos formatos RDS, CSV, JSON e Parquet.
+
+Ao concluir sem erros, **inicie a aplicação R novamente**. Para acesso por SSH,
+use o mesmo comando de inicialização e a mesma porta descritos na seção acima.
+**Apenas atualizar a página com F5 não basta:** a base de equipamentos é carregada
+quando a aplicação inicia. Confira o identificador do snapshot exibido na tela
+e os arquivos na aba **Banco offline**.
+
+Os novos registros poderão aparecer nos mapas e nas estatísticas quando tiverem
+coordenadas válidas dentro da área de estudo e atenderem aos filtros da consulta.
+Depois da atualização e da reinicialização, as consultas voltam a usar os dados
+locais, sem precisar de internet.
+
+Esse comando atualiza **o cadastro de equipamentos**, não as vias, os grafos ou
+os CEPs preparados, que têm etapas próprias. Também não basta editar manualmente
+um CSV: a aplicação lê prioritariamente `data/processed/equipment.rds`, gerado
+pelo processamento. Os CSV e JSON processados são cópias da base consolidada,
+não uma interface de edição sincronizada.
+
 ## Onde ficam os dados
+
+Os arquivos são armazenados no computador que executa o projeto. Por padrão,
+`data_dir: data` em `config.yml` aponta para a pasta `data` dentro do projeto.
+Nesta instalação, o caminho é:
+
+~~~text
+/home/paulo/Documentos/meus_codigos/sampamaisrual/data/
+~~~
+
+Se você acessa a aplicação por SSH, os arquivos continuam no notebook, não no
+computador usado apenas para abrir o navegador.
 
 ~~~text
 data/
-├── raw/<snapshot>/          catálogo + 14 CSV + 14 JSON + manifestos
+├── raw/<snapshot>/          catálogo + CSV e JSON oficiais + manifestos
 ├── processed/
 │   ├── equipment.csv       base analítica legível
 │   ├── equipment.json      mesma base em JSON
