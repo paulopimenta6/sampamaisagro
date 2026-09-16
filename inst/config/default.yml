@@ -4,13 +4,14 @@ reports_dir: outputs/reports
 catalog_url: https://sampamaisrural.prefeitura.sp.gov.br/api/data_reports
 complete_slug: base-completa-sampa-rural
 terms_url: https://sampamaisrural.prefeitura.sp.gov.br/termos
-user_agent: "sampamaisrural-academic/0.1.0 (contato: pesquisa@example.org)"
+user_agent: "sampamaisagro/0.2 (https://github.com/paulopimenta6/sampamaisagro)"
 collection:
   authorized: false
   requests_per_second: 1
   max_tries: 4
 geocoding:
-  endpoint: https://brasilapi.com.br/api/cep/v2
+  endpoint: https://cep.awesomeapi.com.br/json
+  offline: true
   require_sao_paulo: false
   requests_per_second: 2
 spatial:

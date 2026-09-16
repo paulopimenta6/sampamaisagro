@@ -2,7 +2,7 @@
 % Please edit documentation in R/geocode.R
 \name{geocode_cep}
 \alias{geocode_cep}
-\title{Geocode one Brazilian CEP using BrasilAPI CEP V2}
+\title{Resolve a CEP from the local cache, or explicitly prepare it online}
 \usage{
 geocode_cep(cep, config = read_sampa_config(), refresh = FALSE)
 }
@@ -17,5 +17,5 @@ geocode_cep(cep, config = read_sampa_config(), refresh = FALSE)
 One-row data frame with coordinates and provenance.
 }
 \description{
-Geocode one Brazilian CEP using BrasilAPI CEP V2
+Resolve a CEP from the local cache, or explicitly prepare it online
 }

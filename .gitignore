@@ -13,3 +13,4 @@ outputs/
 _targets/
 *.Rcheck/
 *.tar.gz
+__pycache__/

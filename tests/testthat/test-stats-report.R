@@ -28,3 +28,35 @@ test_that("HTML report renders", {
   target <- tempfile(fileext = ".html")
   expect_true(file.exists(render_proximity_report(result, target, equipment = eq)))
 })
+
+test_that("agreement respects fastest-path ranking rather than distance", {
+  a <- data.frame(origin_id = "o", equipment_id = letters[1:3],
+    distance_m = c(100, 200, 300), rank = 1:3)
+  b <- a
+  b$rank <- 3:1
+  agreement <- metric_pair_agreement(a, b, k = 1)
+  expect_equal(agreement$spearman_rho, -1)
+  expect_equal(agreement$kendall_tau, -1)
+  expect_equal(agreement$top_k_jaccard, 0)
+  expect_equal(agreement$mean_difference_m, 0)
+})
+
+test_that("local roads are encoded as one GeoJSON feature", {
+  cfg <- read_sampa_config()
+  cfg$data_dir <- tempfile("local-roads-")
+  dir.create(file.path(cfg$data_dir, "processed"), recursive = TRUE)
+  on.exit(unlink(cfg$data_dir, recursive = TRUE))
+  xy <- matrix(c(-46.73, -23.57, -46.72, -23.56), ncol = 2, byrow = TRUE)
+  roads <- sf::st_sf(geometry = sf::st_sfc(sf::st_linestring(xy),
+    sf::st_linestring(xy + 0.001), crs = 4326))
+  saveRDS(roads, file.path(cfg$data_dir, "processed", "map_roads.rds"))
+  ctx <- load_map_context(cfg)
+  geo <- jsonlite::fromJSON(ctx$roads_geojson, simplifyVector = FALSE)
+  expect_identical(geo$type, "Feature")
+  expect_identical(geo$geometry$type, "MultiLineString")
+  expect_length(geo$geometry$coordinates, 2)
+  map <- make_leaflet_map(data.frame(), context = ctx)
+  methods <- vapply(map$x$calls, function(x) x$method, character(1))
+  expect_equal(sum(methods == "addGeoJSON"), 1)
+  expect_false("addPolylines" %in% methods)
+})

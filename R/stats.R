@@ -49,9 +49,10 @@ metric_pair_agreement <- function(a, b, k) {
   union_top <- union(top_a, top_b)
   data.frame(
     n_common = nrow(merged),
-    spearman_rho = suppressWarnings(stats::cor(merged$distance_m_a, merged$distance_m_b,
+    # Fastest paths are ranked by duration, not by their travelled distance.
+    spearman_rho = suppressWarnings(stats::cor(merged$rank_a, merged$rank_b,
       method = "spearman", use = "complete.obs")),
-    kendall_tau = suppressWarnings(stats::cor(merged$distance_m_a, merged$distance_m_b,
+    kendall_tau = suppressWarnings(stats::cor(merged$rank_a, merged$rank_b,
       method = "kendall", use = "complete.obs")),
     mean_difference_m = mean(dif, na.rm = TRUE),
     limits_lower_m = mean(dif, na.rm = TRUE) - 1.96 * stats::sd(dif, na.rm = TRUE),

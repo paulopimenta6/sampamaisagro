@@ -23,6 +23,17 @@ validate_equipment <- function(data, config = read_sampa_config()) {
   missing_columns <- setdiff(required, names(data))
   if (length(missing_columns)) stop("Colunas obrigatorias ausentes: ", paste(missing_columns, collapse = ", "))
   data$coordinate_status <- classify_coordinates(data$latitude, data$longitude, config$spatial$bbox)
+  data$within_municipality <- rep(NA, nrow(data))
+  boundary_file <- file.path(config$data_dir, "osm", "sao-paulo-boundary.geojson")
+  if (file.exists(boundary_file)) {
+    rows <- which(is.finite(data$latitude) & is.finite(data$longitude) &
+      abs(data$latitude) <= 90 & abs(data$longitude) <= 180)
+    if (length(rows)) {
+      points <- sf::st_as_sf(data[rows, ], coords = c("longitude", "latitude"), crs = 4326)
+      boundary <- sf::st_read(boundary_file, quiet = TRUE)
+      data$within_municipality[rows] <- lengths(sf::st_intersects(points, boundary)) > 0
+    }
+  }
   data$quality_flags <- ifelse(is.na(data$equipment_name) | !nzchar(data$equipment_name), "missing_name", "")
   data$quality_flags <- ifelse(is.na(data$category) | !nzchar(data$category),
     paste0(data$quality_flags, ifelse(nzchar(data$quality_flags), "|", ""), "missing_category"), data$quality_flags)
@@ -31,7 +42,7 @@ validate_equipment <- function(data, config = read_sampa_config()) {
   data$quality_flags[duplicated_ids] <- paste0(data$quality_flags[duplicated_ids],
     ifelse(nzchar(data$quality_flags[duplicated_ids]), "|", ""), "duplicate_record")
 
-  eligible <- data$coordinate_status %in% c("valid_source_coordinate", "derived_geocode")
+  eligible <- data$coordinate_status %in% c("valid_source_coordinate", "derived_geocode") & !duplicated_ids
   quarantine <- data[!eligible, , drop = FALSE]
   issues <- data.frame(
     issue = c("missing_coordinate", "incomplete_coordinate", "invalid_coordinate", "outside_study_area",

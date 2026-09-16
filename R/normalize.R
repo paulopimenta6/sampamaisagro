@@ -9,15 +9,21 @@ canonical_partner_row <- function(x, snapshot_date) {
     address = collapse_value(value("Endere\u00e7o comercial")),
     latitude = lat, longitude = lon, snapshot = snapshot_date
   )
-  record_id <- digest::digest(identity_payload, algo = "sha256")
+  # Without an official identifier, merge only identical source records.
+  # Same name/address/coordinates alone do not prove the same establishment.
+  content_id <- digest::digest(x[sort(names(x))], algo = "sha256")
+  record_id <- digest::digest(list(content_id, snapshot_date), algo = "sha256")
   data.frame(
-    equipment_id = substr(digest::digest(identity_payload[names(identity_payload) != "snapshot"], algo = "sha256"), 1, 24),
+    equipment_id = substr(content_id, 1, 24),
     record_version_id = record_id,
+    source_key = digest::digest(identity_payload[setdiff(names(identity_payload),
+      c("snapshot", "latitude", "longitude"))], algo = "sha256"),
     equipment_name = collapse_value(value("Nome do Perfil")),
     source_database = collapse_value(value("Nome da base de dados")),
     category = collapse_value(value("Categoria")),
     subcategory = collapse_value(value("Subcategorias")),
     qualifications = collapse_value(value("Qualifica\u00e7\u00f5es")),
+    accessibility_reported = collapse_value(value("Possui facilidades para pessoas com necessidades especiais")),
     description = collapse_value(value("Descri\u00e7\u00e3o")),
     source_name = collapse_value(value("Fonte")),
     address = collapse_value(value("Endere\u00e7o comercial")),
@@ -30,7 +36,7 @@ canonical_partner_row <- function(x, snapshot_date) {
     coordinate_origin = "source",
     coordinate_status = NA_character_,
     snapshot_date = snapshot_date,
-    source_payload = jsonlite::toJSON(x, auto_unbox = TRUE, null = "null"),
+    source_payload = as.character(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null")),
     stringsAsFactors = FALSE
   )
 }
@@ -66,23 +72,17 @@ find_complete_snapshot <- function(config) {
 
 #' Load the current processed equipment data
 #'
-#' Falls back to a clearly marked synthetic data set when no snapshot exists.
+#' Real data are required by default; synthetic fixtures require explicit opt-in.
 #'
 #' @param config Project configuration.
 #' @param allow_demo Allow the synthetic fallback.
 #' @return Equipment data frame.
 #' @export
-load_equipment_data <- function(config = read_sampa_config(), allow_demo = TRUE) {
+load_equipment_data <- function(config = read_sampa_config(), allow_demo = FALSE) {
   parquet <- file.path(config$data_dir, "processed", "equipment.parquet")
   rds <- file.path(config$data_dir, "processed", "equipment.rds")
-  if (file.exists(parquet)) return(as.data.frame(arrow::read_parquet(parquet)))
-  if (file.exists(rds)) return(readRDS(rds))
-  raw <- find_complete_snapshot(config)
-  if (length(raw)) {
-    data <- normalize_sampa_json(raw[[1]])
-    checked <- validate_equipment(data, config)
-    return(checked$data)
-  }
+  if (file.exists(rds)) return(classify_equipment(readRDS(rds)))
+  if (file.exists(parquet)) return(classify_equipment(as.data.frame(arrow::read_parquet(parquet))))
   if (allow_demo) return(demo_equipment())
   stop("Nenhum snapshot processado encontrado. Execute scripts/update_data.R.")
 }

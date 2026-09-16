@@ -2,7 +2,7 @@
 % Please edit documentation in R/app.R
 \name{run_app}
 \alias{run_app}
-\title{Run the Sampa+Rural proximity Shiny application}
+\title{Run the offline SampaMaisAgro Shiny application}
 \usage{
 run_app(config = read_sampa_config(), equipment = NULL, graphs = NULL, ...)
 }
@@ -13,8 +13,8 @@ run_app(config = read_sampa_config(), equipment = NULL, graphs = NULL, ...)
 
 \item{graphs}{Optional network graphs.}
 
-\item{...}{Passed to \code{shiny::runApp()}.}
+\item{...}{Passed to shiny::runApp.}
 }
 \description{
-Run the Sampa+Rural proximity Shiny application
+Run the offline SampaMaisAgro Shiny application
 }

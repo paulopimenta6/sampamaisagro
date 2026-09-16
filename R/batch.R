@@ -1,12 +1,13 @@
 read_origin_file <- function(path) {
   if (!file.exists(path)) stop("Arquivo de origens nao encontrado: ", path)
   extension <- tolower(tools::file_ext(path))
+  csv_delim <- if (extension == "csv" && grepl(";", readLines(path, n = 1, warn = FALSE), fixed = TRUE)) ";" else ","
   data <- switch(extension,
-    csv = readr::read_csv(path, show_col_types = FALSE, progress = FALSE),
-    tsv = readr::read_tsv(path, show_col_types = FALSE, progress = FALSE),
-    txt = readr::read_delim(path, delim = NULL, show_col_types = FALSE, progress = FALSE),
-    xlsx = readxl::read_excel(path),
-    xls = readxl::read_excel(path),
+    csv = readr::read_delim(path, delim = csv_delim, col_types = readr::cols(.default = "c"), show_col_types = FALSE, progress = FALSE),
+    tsv = readr::read_tsv(path, col_types = readr::cols(.default = "c"), show_col_types = FALSE, progress = FALSE),
+    txt = readr::read_delim(path, delim = NULL, col_types = readr::cols(.default = "c"), show_col_types = FALSE, progress = FALSE),
+    xlsx = readxl::read_excel(path, col_types = "text"),
+    xls = readxl::read_excel(path, col_types = "text"),
     parquet = arrow::read_parquet(path),
     stop("Formato nao suportado: ", extension)
   )
@@ -62,10 +63,26 @@ process_batch <- function(input, output_dir, equipment = load_equipment_data(), 
   dir.create(error_dir, recursive = TRUE, showWarnings = FALSE)
   checkpoint_path <- file.path(output_dir, "checkpoint.rds")
   chunk_size <- as.integer(config$batch$chunk_size)
+  fingerprint <- digest::digest(list(origins, parameters, equipment, graphs, chunk_size,
+    config$spatial, config$proximity, schema = "2"), algo = "sha256")
+  identity_path <- file.path(output_dir, "run_identity.rds")
+  if (file.exists(identity_path) && (!isTRUE(resume) || !identical(readRDS(identity_path), fingerprint))) {
+    stop("O diret\u00f3rio cont\u00e9m outra execu\u00e7\u00e3o: entrada, dados ou par\u00e2metros mudaram. Use um diret\u00f3rio novo.")
+  }
+  atomic_save_rds(fingerprint, identity_path)
   chunk_id <- ceiling(seq_len(nrow(origins)) / chunk_size)
   total_chunks <- if (nrow(origins)) max(chunk_id) else 0L
   completed <- integer()
-  if (isTRUE(resume) && file.exists(checkpoint_path)) completed <- readRDS(checkpoint_path)$completed %||% integer()
+  if (file.exists(checkpoint_path)) {
+    checkpoint <- readRDS(checkpoint_path)
+    if (!isTRUE(resume) || !identical(checkpoint$fingerprint, fingerprint)) {
+      stop("O diret\u00f3rio j\u00e1 cont\u00e9m outro processamento. Use um diret\u00f3rio novo; entrada, dados ou par\u00e2metros mudaram.")
+    }
+    completed <- checkpoint$completed %||% integer()
+  }
+  # Validate identifiers globally, before splitting; preserve global source rows.
+  checked <- validate_origins(origins, config)
+  origins <- checked$annotated
 
   manifest <- batch_manifest(
     input_path, origins, parameters,
@@ -77,15 +94,19 @@ process_batch <- function(input, output_dir, equipment = load_equipment_data(), 
         file.exists(file.path(partition_dir, sprintf("part-%05d.parquet", chunk))) &&
         file.exists(file.path(error_dir, sprintf("errors-%05d.csv", chunk)))) next
     rows <- which(chunk_id == chunk)
-    current <- origins[rows, , drop = FALSE]
-    current$.input_row <- rows
+    bad <- checked$errors[checked$errors$row %in% rows, , drop = FALSE]
+    valid_rows <- setdiff(rows, bad$row)
+    current <- origins[valid_rows, , drop = FALSE]
+    current$.input_row <- valid_rows
     resolved <- resolve_origins(current, config)
     mapped <- resolved$errors
     if (nrow(mapped)) {
-      mapped$input_row <- rows[pmin(mapped$row, length(rows))]
+      mapped$input_row <- valid_rows[mapped$row]
     } else {
       mapped$input_row <- integer()
     }
+    bad$input_row <- bad$row
+    mapped <- dplyr::bind_rows(bad, mapped)
     readr::write_csv(mapped, file.path(error_dir, sprintf("errors-%05d.csv", chunk)), na = "")
     if (nrow(resolved$valid)) {
       args <- c(list(origins = resolved$valid, equipment = equipment, graphs = graphs, config = config), parameters)
@@ -94,8 +115,11 @@ process_batch <- function(input, output_dir, equipment = load_equipment_data(), 
       result <- data.frame()
     }
     write_batch_partition(result, file.path(partition_dir, sprintf("part-%05d.parquet", chunk)))
+    diagnostics <- attr(result, "routing_diagnostics")
+    if (!is.null(diagnostics)) readr::write_csv(diagnostics,
+      file.path(output_dir, sprintf("routing-diagnostics-%05d.csv", chunk)))
     completed <- sort(unique(c(completed, chunk)))
-    atomic_save_rds(list(completed = completed, total = total_chunks, updated_at = utc_now()), checkpoint_path)
+    atomic_save_rds(list(completed = completed, total = total_chunks, fingerprint = fingerprint, updated_at = utc_now()), checkpoint_path)
     if (is.function(progress_callback)) progress_callback(length(completed), total_chunks,
       sprintf("Bloco %d de %d concluido", chunk, total_chunks))
   }

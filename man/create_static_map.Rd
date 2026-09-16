@@ -9,10 +9,10 @@ create_static_map(results, metric_id = NULL)
 \arguments{
 \item{results}{Long-form proximity results.}
 
-\item{metric_id}{Metric to display; defaults to the first one.}
+\item{metric_id}{Metric to display.}
 }
 \value{
-A \code{ggplot2} object.
+A ggplot object.
 }
 \description{
 Create a publication-oriented static proximity map

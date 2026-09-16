@@ -1,137 +1,176 @@
-# Sampa+Rural: proximidade espacial em R
+# SampaMaisAgro 🌱
 
-Este repositório implementa um fluxo acadêmico reprodutível para coletar, versionar e analisar os dados abertos do [Sampa+Rural](https://sampamaisrural.prefeitura.sp.gov.br/dados). Ele aceita uma origem ou lotes com até 100 mil origens, informadas por CEP ou latitude/longitude, e produz vizinhos mais próximos, mapas, tabelas, diagnósticos estatísticos e relatórios HTML/PDF.
+Uma aplicação em **R + Shiny** para descobrir registros de agricultura e alimentação próximos de um CEP ou de coordenadas, individualmente ou em lote. Usa os [dados abertos do Sampa+Rural](https://sampamaisrural.prefeitura.sp.gov.br/dados) e, após a preparação, funciona sem internet.
 
-👉 Para uma introdução passo a passo, com exemplos e linguagem simples, comece pelo [Guia divertido do Sampa+Rural](GUIA_LUDICO.md).
+Comece pelo [guia passo a passo](GUIA_LUDICO.md). Para pesquisa, leia o [protocolo](PROTOCOL.md) e o [dicionário](CODEBOOK.md).
+Os testes e números observados estão na [ficha de validação real](docs/VALIDACAO_REAL.md).
 
-O projeto foi desenhado para apoiar uma dissertação, mas **não substitui o protocolo de pesquisa**: definições de exposição, população, período e hipóteses precisam ser congeladas antes da análise confirmatória. Leia [PROTOCOL.md](PROTOCOL.md) e [CODEBOOK.md](CODEBOOK.md).
+## O que mudou na versão 0.2
 
-## O que está implementado
+- Corrigida a rejeição de CEPs já geocodificados.
+- Sem demonstração silenciosa: a aplicação exige uma base real.
+- Os 14 relatórios disponíveis foram guardados em **CSV e JSON**, com contagens e SHA-256.
+- Base consolidada também em CSV, JSON, Parquet e RDS.
+- Mapas vetoriais locais; sem tiles externos ou chave de API.
+- Filtros de feiras livres, orgânicas, hortifrutis, abastecimento/CEAGESP, hortas, agricultores, comércio de alimentos e apoio à agricultura.
+- Acessibilidade declarada: sim, não ou não informada.
+- Estatísticas, mapa e exportações tanto para consulta única quanto para lote.
+- Testes de regressão, validação real e navegador com requisições externas bloqueadas.
 
-- Coletor educado do catálogo e dos relatórios JSON/CSV, com autorização explícita, limite de requisições, retries, ETag, checksums e snapshots imutáveis.
-- Normalização, validação espacial e quarentena; contatos diretos nunca entram na base analítica processada.
-- CEP via BrasilAPI CEP V2, cache local e proveniência; coordenadas continuam sendo a opção mais precisa.
-- Cinco métricas geométricas: Karney, Haversine, Euclidiana, Manhattan e Chebyshev.
-- Redes OpenStreetMap para caminhada, bicicleta e automóvel; menor distância e menor tempo; ida, volta ou ambos; alertas de snapping e pares inalcançáveis.
-- Consulta unitária Shiny e lotes assíncronos por SQLite, blocos e checkpoints.
-- Mapas Leaflet/ggplot2, concordância entre métricas, grade hexagonal, Poisson/binomial negativa e Moran dos resíduos.
-- Relatório parametrizado HTML/PDF, testes, `targets`, `renv` e contêineres separados para aplicação e worker.
+Os antigos arquivos de demonstração em outputs permanecem apenas como artefatos históricos. Não são os resultados da aplicação atual.
 
-## Início rápido
+## Abrir o projeto que já está preparado
 
-```r
-install.packages(c("renv", "pkgload"))
-renv::restore()
+No R, a partir da pasta do projeto:
+
+~~~r
 pkgload::load_all(".")
 run_app()
-```
+~~~
 
-Sem snapshot oficial, a aplicação entra em **modo demonstração** com 12 pontos sintéticos claramente identificados. Isso permite testar a interface, mas não produzir resultados de pesquisa.
+Ou clique em **Run App** no arquivo app.R. Ele carrega o código atual do projeto, não uma instalação antiga do pacote.
 
-### Demonstrações incluídas
+No terminal, usando os pacotes já instalados:
 
-- [Tela inicial da aplicação](outputs/test-artifacts/app-initial.png)
-- [Consulta demonstrativa no mapa](outputs/test-artifacts/app-query.png)
-- [Relatório demonstrativo em PDF](outputs/reports/relatorio-demonstracao.pdf)
-- [Relatório demonstrativo em HTML](outputs/reports/relatorio-demonstracao.html)
+~~~bash
+R_PROFILE_USER=/dev/null Rscript scripts/run_app.R
+~~~
 
-Esses quatro arquivos usam somente dados sintéticos e são mantidos no repositório como exemplos. Outros conteúdos de `outputs/`, assim como dados, caches e lotes reais, permanecem ignorados pelo Git.
+O CEP **05586-001** está preparado para teste. O mapa inicial já mostra registros reais, antes da primeira consulta.
 
-Antes da coleta, edite `config.yml`:
+## Preparar uma instalação nova (com internet)
 
-1. confirme que a autorização institucional cobre a coleta automatizada;
-2. substitua `pesquisa@example.org` por um contato real no `user_agent`;
-3. confirme a frequência permitida e mantenha `authorized: true` somente enquanto a autorização for válida.
+R ≥ 4.3; restaure as dependências com renv::restore(). Para mapas/rede, reserve memória e disco: o extrato testado contém 331 mil vias, e os três grafos ocupam aproximadamente 1,6 GB em disco antes de otimizações. A preparação pode levar dezenas de minutos; use uma máquina com cerca de 16 GB de RAM. As consultas geométricas são muito mais leves. PDF requer Pandoc e LaTeX.
 
-Então execute:
+~~~bash
+Rscript scripts/prepare_offline.R
+~~~
 
-```bash
+Esse comando coleta os dados ausentes, prepara dois CEPs de exemplo e constrói as camadas locais. Preserva uma base existente; atualização é explícita:
+
+~~~bash
 Rscript scripts/update_data.R
-```
+Rscript scripts/prepare_ceps.R 05586001 01001000
+Rscript scripts/prepare_network.R
+~~~
 
-O snapshot bruto vai para `data/raw/AAAA-MM-DD/`; a base sem campos livres potencialmente identificadores vai para `data/processed/`.
+Reprocessar um snapshot já baixado, sem nova coleta:
 
-## Rede OpenStreetMap
+~~~bash
+Rscript scripts/update_data.R data/raw/20260914T011240Z
+Rscript scripts/prepare_network.R --offline
+~~~
 
-Obtenha um extrato `.osm.pbf` cuja data e origem possam ser citadas. Preferencialmente, recorte-o pelo limite oficial do município e registre a licença ODbL. Depois:
+## Onde ficam os dados
 
-```bash
-Rscript scripts/prepare_network.R data/osm/sao-paulo.osm.pbf limite_municipal.gpkg
-```
+~~~text
+data/
+├── raw/<snapshot>/          catálogo + 14 CSV + 14 JSON + manifestos
+├── processed/
+│   ├── equipment.csv       base analítica legível
+│   ├── equipment.json      mesma base em JSON
+│   ├── equipment.rds       base usada pela aplicação
+│   ├── equipment.parquet   formato colunar
+│   ├── inventory.csv       arquivos, fontes, contagens e hashes
+│   ├── deduplication.json  regras e contagem de repetições removidas
+│   ├── source_reconciliation.csv
+│   ├── network_*.rds       grafos por modo
+│   ├── network_manifest.json
+│   └── map_roads.rds
+├── cache/cep/              resposta JSON + ponto e proveniência em RDS
+└── osm/                    vias OSM JSON + limite IBGE GeoJSON
+~~~
 
-São gerados `network_foot.rds`, `network_bicycle.rds` e `network_motorcar.rds`. Sem esses arquivos, as cinco métricas geométricas continuam disponíveis e a interface informa a ausência da rede.
+Os dados ficam **no disco local**, não são embutidos no pacote R nem enviados automaticamente ao GitHub. A pasta data está ignorada pelo Git, pois as fontes brutas incluem contatos pessoais. Transfira a pasta completa, de forma controlada, ao preparar outra máquina offline.
 
-## Consulta em R
+## O que “offline” significa
 
-```r
+A aplicação não consulta serviços de mapas, rotas ou geocodificação durante uma consulta no modo padrão. Coordenadas funcionam diretamente.
+
+**Um CEP precisa estar previamente no índice local.** Não há uma base gratuita completa de todos os CEPs incorporada ao projeto. Para preparar novos CEPs, enquanto estiver conectado:
+
+~~~bash
+Rscript scripts/prepare_ceps.R 01311000
+Rscript scripts/prepare_ceps.R meus-ceps.csv
+~~~
+
+CEPs desconhecidos no modo offline produzem uma mensagem explicativa. Nunca são substituídos por coordenadas inventadas. A fonte atual é a [AwesomeAPI CEP](https://docs.awesomeapi.com.br/api-cep); cada resposta é arquivada. O ponto é aproximado, não um domicílio.
+
+## Distâncias e seleção
+
+| Família | Medidas |
+|---|---|
+| Geométrica | Karney elipsoidal, Haversine esférica, Euclidiana, Manhattan e Chebyshev projetadas |
+| Rede a pé | Menor distância e menor tempo modelado |
+| Rede de bicicleta | Menor distância e menor tempo modelado |
+| Rede de carro | Menor distância e menor tempo modelado |
+
+As projeções usam EPSG:31983. As redes permitem ida, volta ou ambas. Ative os modos desejados na interface; a ausência de grafos locais não é mascarada.
+
+A rede é uma análise mais pesada: a consulta a pé no navegador levou cerca de
+3 minutos no teste real, incluindo o carregamento do grafo. Consulte os tempos
+e condições na [ficha de validação](docs/VALIDACAO_REAL.md). Comece pelas métricas
+geométricas e acrescente apenas os modos de transporte necessários.
+
+Cada resultado retém os **k primeiros OU os pontos dentro do raio**, por origem/métrica/sentido. O raio é sempre em metros, inclusive para trajetos classificados por tempo. O ranking “menor tempo” é ordenado por minutos.
+
+Resultados de rede incluem conectores estimados até os vértices; alertas acima de 250 m e exclusão acima de 1.000 m. Sem trânsito real, restrições completas de conversão ou auditoria de calçadas. O mapa mostra os pontos, **não o desenho dos trajetos**.
+
+## Lotes e relatórios
+
+Na aba Lotes, envie até 100 origens. A análise acontece na própria interface, sem depender de iniciar um worker. Mapa, tabelas e estatísticas aparecem nas mesmas abas da consulta única. Há download ZIP e erros por linha.
+
+Exemplo: [origens-reais.csv](inst/examples/origens-reais.csv). A terceira linha tem um CEP não preparado para demonstrar o tratamento de erros.
+
+Para lotes maiores:
+
+~~~bash
+Rscript scripts/batch.R --input=origens.csv --output=outputs/meu-lote --modes=foot,bicycle,motorcar
+~~~
+
+A API em R mantém partições e checkpoints; rejeita retomada com entrada, parâmetros ou base diferentes. IDs duplicados são validados no lote inteiro. A fila SQLite continua disponível para implantação avançada.
+
+~~~r
+pkgload::load_all(".")
 cfg <- read_sampa_config()
-equipamentos <- load_equipment_data(cfg)
-grafos <- load_network_graphs(cfg)
+eq <- load_equipment_data(cfg)
+origens <- resolve_origins(data.frame(cep = "05586-001"), cfg)
+resultado <- calculate_proximity(origens$valid, eq, graphs = list(), config = cfg)
+render_proximity_report(resultado, "outputs/relatorio.html", origens$valid, eq, cfg)
+render_proximity_report(resultado, "outputs/relatorio.pdf", origens$valid, eq, cfg)
+~~~
 
-origens <- data.frame(
-  query_id = c("centro", "cep_exemplo"),
-  latitude = c(-23.5505, NA),
-  longitude = c(-46.6333, NA),
-  cep = c(NA, "01001000"),
-  k = 10,
-  radius_m = 5000
-)
+## Testar
 
-resolvidas <- resolve_origins(origens, cfg)
-resultado <- calculate_proximity(
-  resolvidas$valid, equipamentos, grafos,
-  directions = "both", config = cfg
-)
-```
+~~~bash
+R_PROFILE_USER=/dev/null Rscript -e 'testthat::test_local()'
+R_PROFILE_USER=/dev/null Rscript scripts/validate_real_data.R
+~~~
 
-Uma linha do resultado representa `origem × equipamento × métrica × sentido`. `distance_m` é sempre expresso em metros; `duration_min` só existe para caminhos de menor tempo. O conjunto devolvido é a união dos `k` primeiros e dos pontos dentro do raio para cada métrica.
+O segundo comando exige os dados reais e os três grafos, bloqueia o cliente HTTP na análise e grava evidências em outputs/validation-real. O navegador é testado por tests/e2e/test_app.py usando um servidor em localhost:3939; ele rejeita requisições externas.
 
-## Lotes
+Para uma execução longa, valide um modo por vez e consolide ao final. Os resultados
+aprovados são reaproveitados somente quando dados, código de validação, código R e
+grafo continuam idênticos:
 
-Arquivo mínimo por coordenadas:
+~~~bash
+R_PROFILE_USER=/dev/null Rscript scripts/validate_real_data.R foot
+R_PROFILE_USER=/dev/null Rscript scripts/validate_real_data.R bicycle
+R_PROFILE_USER=/dev/null Rscript scripts/validate_real_data.R motorcar
+R_PROFILE_USER=/dev/null Rscript scripts/validate_real_data.R
+~~~
 
-```csv
-query_id,latitude,longitude,k,radius_m
-q1,-23.5505,-46.6333,10,5000
-q2,-23.6200,-46.7000,20,3000
-```
+`evidence.json` só indica `passed: true` após a consolidação completa. O teste lento
+`tests/e2e/test_network.py` também exercita a consulta a pé pela interface.
+Se já houver vias preparadas, os grafos podem ser reconstruídos separadamente,
+sem baixar novamente o OSM: `Rscript scripts/rebuild_graphs.R bicycle` (ou `motorcar`/`foot`).
 
-Ou por CEP:
+## Cuidados acadêmicos
 
-```csv
-query_id,cep,k,radius_m
-q1,01001000,10,5000
-```
+A base consolidada contém **perfis cadastrados**, não um censo de todos os estabelecimentos. Perfis de uma mesma instalação podem continuar separados se não forem idênticos. Categorias se sobrepõem; “orgânico” é rótulo da fonte/regra, não certificação verificada. “Acessibilidade: sim” não garante percurso acessível.
 
-```bash
-Rscript scripts/batch.R --input=origens.csv --output=outputs/meu-lote --modes=foot,bicycle,motorcar --direction=both
-Rscript scripts/worker.R
-```
+A triagem geográfica usa o retângulo definido em config.yml, incluindo registros adjacentes ao município. A malha IBGE é referência cartográfica; within_municipality permite a análise de sensibilidade municipal. Coordenadas ausentes não são inventadas.
 
-O worker grava partições Parquet, erros por linha, manifesto, progresso e checkpoint. Não há log de coordenadas. Artefatos web vencem conforme `retention_days`; a linha de auditoria permanece no SQLite.
+Medianas, quantis e gráficos descrevem **o subconjunto selecionado**. Não permitem inferir acesso da população, segurança alimentar ou causalidade. Modelos avançados permanecem exploratórios, fora do fluxo descritivo padrão.
 
-## Relatórios e testes
-
-```r
-render_proximity_report(resultado, "outputs/relatorio.html", resolvidas$valid, equipamentos, cfg)
-render_proximity_report(resultado, "outputs/relatorio.pdf", resolvidas$valid, equipamentos, cfg)
-```
-
-```bash
-Rscript -e 'testthat::test_local()'
-R CMD check . --no-manual
-```
-
-## Reprodutibilidade e implantação
-
-`_targets.R` descreve a linhagem da coleta até o Parquet processado. Use `renv::restore()` para restaurar versões. Na implantação, execute aplicação e worker como processos separados:
-
-```bash
-docker compose up --build
-```
-
-Os diretórios `data/`, `jobs/` e `outputs/` ficam fora do Git. Armazene snapshots e relatórios científicos em repositório institucional com controle de acesso, política de retenção e DOI quando apropriado.
-
-## Citação e licenças
-
-Código: MIT. Dados Sampa+Rural: cite a Prefeitura de São Paulo e cada fonte parceira indicada no cadastro. Rede: cite OpenStreetMap contributors e respeite ODbL. Geocodificação: cite BrasilAPI e a fonte subjacente informada na resposta. Registre no manuscrito as datas exatas dos snapshots.
+Código: MIT. Credite Prefeitura/Sampa+Rural e fontes parceiras; [IBGE](https://servicodados.ibge.gov.br/api/docs/malhas?versao=3); [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL. Preserve manifestos e datas para a dissertação.

@@ -4,7 +4,7 @@
 \alias{load_equipment_data}
 \title{Load the current processed equipment data}
 \usage{
-load_equipment_data(config = read_sampa_config(), allow_demo = TRUE)
+load_equipment_data(config = read_sampa_config(), allow_demo = FALSE)
 }
 \arguments{
 \item{config}{Project configuration.}
@@ -15,5 +15,5 @@ load_equipment_data(config = read_sampa_config(), allow_demo = TRUE)
 Equipment data frame.
 }
 \description{
-Falls back to a clearly marked synthetic data set when no snapshot exists.
+Real data are required by default; synthetic fixtures require explicit opt-in.
 }

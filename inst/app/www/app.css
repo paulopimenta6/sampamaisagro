@@ -1,5 +1,13 @@
 body { background: #f5f7f5; }
+.leaflet-container { background: #f2f5ed; }
+.kpi-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin-bottom: 1rem; }
+.kpi { display: flex; flex-direction: column; padding: 1rem 1.3rem; background: white; border: 1px solid #cdddcf; border-radius: .6rem; }
+.kpi strong { font-size: 1.8rem; color: #176b3a; }
+.kpi span { color: #4b5c50; font-size: .9rem; }
+.leaflet-control { max-width: 340px; }
+@media (max-width: 650px) { .kpi-grid { grid-template-columns: 1fr; } .leaflet-control { max-width: 230px; font-size: 10px; } }
 .navbar-brand { font-weight: 700; letter-spacing: .01em; }
+.navbar-nav .nav-link.active { color: #ffffff !important; border-bottom: 2px solid #ffffff; }
 .bslib-sidebar-layout { min-height: calc(100vh - 150px); }
 .query-status { margin: .5rem 0 1rem; padding: .65rem .8rem; background: #eef5ef; border-left: 4px solid #176b3a; }
 .app-footer { padding: 1rem 1.5rem; color: #4b5c50; font-size: .9rem; text-align: center; }

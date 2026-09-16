@@ -1,6 +1,6 @@
 Package: sampamaisrural
 Title: Acessibilidade Espacial aos Equipamentos do Sampa+Rural
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: person("Paulo", "Pesquisador", role = c("aut", "cre"), email = "pesquisa@example.org")
 Description: Coleta, valida, versiona e analisa os dados abertos do
     Sampa+Rural. Calcula proximidade por metricas geometricas e redes de

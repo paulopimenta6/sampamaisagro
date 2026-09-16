@@ -1,0 +1,4 @@
+query_id,cep,latitude,longitude,k,radius_m
+teste-iquiririm,05586001,,,10,2000
+teste-se,,-23.55008,-46.63408,5,1000
+cep-a-preparar,99999999,,,5,1000

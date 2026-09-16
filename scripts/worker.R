@@ -2,7 +2,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 once <- "--once" %in% args
 root <- normalizePath(if (file.exists("DESCRIPTION")) "." else "..", mustWork = TRUE)
-if (requireNamespace("sampamaisrural", quietly = TRUE)) library(sampamaisrural) else pkgload::load_all(root, quiet = TRUE)
+pkgload::load_all(root, quiet = TRUE)
 config <- read_sampa_config(file.path(root, "config.yml"))
 equipment <- load_equipment_data(config)
 graphs <- load_network_graphs(config)

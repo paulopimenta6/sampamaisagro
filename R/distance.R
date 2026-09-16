@@ -31,7 +31,8 @@ geometric_distance_matrix <- function(origin_lon, origin_lat, destinations, proj
 }
 
 rank_distance_rows <- function(data, k, radius_m) {
-  data <- data[order(data$distance_m, data$equipment_id, na.last = TRUE), , drop = FALSE]
+  order_value <- if (nrow(data) && identical(data$path_objective[[1]], "fastest")) data$duration_min else data$distance_m
+  data <- data[order(order_value, data$equipment_id, na.last = TRUE), , drop = FALSE]
   reachable <- is.finite(data$distance_m)
   data$rank <- NA_integer_
   data$rank[reachable] <- seq_len(sum(reachable))
@@ -62,11 +63,11 @@ geometric_rows <- function(origin, equipment, k, radius_m, projected_crs) {
   dplyr::bind_rows(rows)
 }
 
-match_graph_points <- function(graph, xy) {
-  vertices <- dodgr::dodgr_vertices(graph)
+match_graph_points <- function(graph, xy, vertices = NULL) {
+  vertices <- vertices %||% dodgr::dodgr_vertices(graph)
   xy <- as.data.frame(xy)
   names(xy)[1:2] <- c("x", "y")
-  index <- dodgr::match_pts_to_verts(vertices, xy, connected = TRUE)
+  index <- dodgr::match_pts_to_verts(vertices, xy, connected = FALSE)
   snapped <- as.matrix(vertices[index, c("x", "y"), drop = FALSE])
   input <- as.matrix(xy[, c("x", "y"), drop = FALSE])
   list(
@@ -78,11 +79,11 @@ match_graph_points <- function(graph, xy) {
 
 route_one_direction <- function(graph, origin, equipment, mode, objective, direction,
                                 k, radius_m, snap_warning_m, snap_exclude_m,
-                                connector_speed_kmh) {
+                                connector_speed_kmh, matches = NULL) {
   origin_xy <- matrix(c(origin$longitude[[1]], origin$latitude[[1]]), ncol = 2L)
   equipment_xy <- as.matrix(equipment[, c("longitude", "latitude"), drop = FALSE])
-  origin_match <- match_graph_points(graph, origin_xy)
-  equipment_match <- match_graph_points(graph, equipment_xy)
+  origin_match <- if (is.null(matches)) match_graph_points(graph, origin_xy) else matches$origin
+  equipment_match <- if (is.null(matches)) match_graph_points(graph, equipment_xy) else matches$equipment
   shortest <- identical(objective, "shortest")
 
   if (identical(direction, "origin_to_equipment")) {
@@ -142,13 +143,17 @@ network_rows <- function(origin, equipment, graphs, modes, directions, k, radius
   for (mode in intersect(modes, names(graphs))) {
     graph <- graphs[[mode]]
     if (is.null(graph) || !nrow(graph)) next
+    vertices <- dodgr::dodgr_vertices(graph)
+    matches <- list(origin = match_graph_points(graph,
+      matrix(c(origin$longitude[[1]], origin$latitude[[1]]), ncol = 2), vertices),
+      equipment = match_graph_points(graph, equipment[, c("longitude", "latitude")], vertices))
     for (objective in c("shortest", "fastest")) {
       for (direction in directions) {
         cursor <- cursor + 1L
         rows[[cursor]] <- route_one_direction(
           graph, origin, equipment, mode, objective, direction, k, radius_m,
           config$spatial$snap_warning_m, config$spatial$snap_max_m,
-          speeds[[mode]] %||% 5
+          speeds[[mode]] %||% 5, matches = matches
         )
       }
     }
@@ -174,66 +179,66 @@ calculate_proximity <- function(origins, equipment, graphs = list(), categories 
                                 modes = c("foot", "bicycle", "motorcar"),
                                 directions = "origin_to_equipment",
                                 config = read_sampa_config()) {
-  checked <- validate_origins(origins, config)
+  # Resolved CEPs legitimately carry both provenance (CEP) and coordinates.
+  # Validate the coordinate representation, keeping the original metadata.
+  origins <- as.data.frame(origins)
+  if ("origin_id" %in% names(origins) && !"query_id" %in% names(origins)) origins$query_id <- origins$origin_id
+  origins$origin_id <- NULL
+  original_cep <- origins$cep
+  is_resolved <- "origin_method" %in% names(origins) && all(is.finite(origins$latitude) & is.finite(origins$longitude))
+  validation_input <- origins
+  if (is_resolved) validation_input$cep <- NA_character_
+  checked <- validate_origins(validation_input, config)
   if (nrow(checked$errors)) {
     stop("Origens invalidas: ", paste(unique(checked$errors$message), collapse = "; "))
   }
   origins <- checked$valid
+  if (is_resolved) origins$cep <- original_cep
   names(origins)[names(origins) == "query_id"] <- "origin_id"
   origins$origin_type <- ifelse(!is.na(origins$cep), "cep", "coordinates")
   validated <- validate_equipment(equipment, config)
   equipment <- validated$eligible
+  if (length(setdiff(modes, c("foot", "bicycle", "motorcar")))) stop("Modo de rede desconhecido.")
   if (!is.null(categories) && length(categories)) {
     equipment <- equipment[equipment$category %in% categories, , drop = FALSE]
   }
   if (!nrow(equipment)) return(data.frame())
-  k <- as.integer(k %||% config$proximity$default_k)
-  radius_m <- as.numeric(radius_m %||% config$proximity$default_radius_m)
-  if (!is.finite(k) || k < 1L) stop("k deve ser um inteiro positivo.")
-  if (!is.finite(radius_m) || radius_m < 0) stop("radius_m deve ser nao negativo.")
+  if (!is.null(k) && (length(k) != 1 || !is.finite(k) || k != trunc(k) || k < 1L || k > 1000)) stop("k deve ser um inteiro entre 1 e 1000.")
+  if (!is.null(radius_m) && (length(radius_m) != 1 || !is.finite(radius_m) || radius_m <= 0 || radius_m > 100000)) stop("radius_m deve estar entre 0 e 100000.")
   directions <- match.arg(directions, c("origin_to_equipment", "equipment_to_origin", "both"), several.ok = TRUE)
   if ("both" %in% directions) directions <- c("origin_to_equipment", "equipment_to_origin")
 
   all_rows <- lapply(seq_len(nrow(origins)), function(i) {
     origin <- origins[i, , drop = FALSE]
+    k <- k %||% origin$k[[1]]
+    radius_m <- radius_m %||% origin$radius_m[[1]]
     geometric <- geometric_rows(origin, equipment, k, radius_m, config$spatial$projected_crs)
 
-    karney <- geometric[geometric$metric_id == "geodesic_karney", , drop = FALSE]
-    candidate_n <- min(nrow(equipment), max(50L, 5L * k))
-    candidate_ids <- unique(c(
-      karney$equipment_id[order(karney$distance_m)][seq_len(candidate_n)],
-      karney$equipment_id[karney$within_radius]
-    ))
-    candidates <- equipment[match(candidate_ids, equipment$equipment_id), , drop = FALSE]
-    routed <- network_rows(origin, candidates, graphs, modes, directions, k, radius_m, config)
+    # Evaluate every eligible destination: fastest-path rankings cannot be
+    # bounded safely by a geodesic top-k candidate envelope.
+    routed <- network_rows(origin, equipment, graphs, modes, directions, k, radius_m, config)
 
-    # Expand the routing set when a network kth distance reaches beyond the
-    # geodesic envelope. Geodesic distance is a lower bound for path distance.
-    repeat {
-      if (!nrow(routed) || nrow(candidates) == nrow(equipment)) break
-      kth <- routed[!is.na(routed$rank) & routed$rank == k, "distance_m", drop = TRUE]
-      limit <- if (length(kth)) max(kth, na.rm = TRUE) else Inf
-      if (!is.finite(limit)) limit <- Inf
-      expanded_ids <- karney$equipment_id[karney$distance_m <= limit]
-      if (length(kth) == 0L) expanded_ids <- equipment$equipment_id
-      expanded_ids <- unique(c(candidate_ids, expanded_ids))
-      if (length(expanded_ids) == length(candidate_ids)) break
-      candidate_ids <- expanded_ids
-      candidates <- equipment[match(candidate_ids, equipment$equipment_id), , drop = FALSE]
-      routed <- network_rows(origin, candidates, graphs, modes, directions, k, radius_m, config)
-    }
-
-    dplyr::bind_rows(geometric, routed)
+    rows <- dplyr::bind_rows(geometric, routed)
+    rows$selection_k <- k
+    rows$selection_radius_m <- radius_m
+    rows
   })
   results <- dplyr::bind_rows(all_rows)
+  if (!nrow(results)) return(data.frame())
+  diagnostics <- as.data.frame(table(results$origin_id, results$metric_id, results$routing_status), stringsAsFactors = FALSE)
+  names(diagnostics) <- c("origin_id", "metric_id", "routing_status", "n")
+  diagnostics <- diagnostics[diagnostics$n > 0, ]
   results <- results[results$selected %in% TRUE, , drop = FALSE]
   meta <- equipment[, intersect(c("equipment_id", "equipment_name", "category", "subcategory",
-    "address", "district", "zone", "postal_code", "latitude", "longitude",
-    "source_name", "snapshot_date"), names(equipment)), drop = FALSE]
+    "address", "district", "zone", "postal_code", "latitude", "longitude", "primary_group", "groups", "accessibility",
+    "source_name", "snapshot_date", "within_municipality"), names(equipment)), drop = FALSE]
   results <- dplyr::left_join(results, meta, by = "equipment_id")
   origin_meta <- origins[, intersect(c("origin_id", "origin_type", "cep", "latitude", "longitude",
     "origin_quality_flag", "geocode_source", "geocode_precision", "geocoded_at"), names(origins)), drop = FALSE]
   names(origin_meta)[names(origin_meta) %in% c("cep", "latitude", "longitude")] <-
     paste0("origin_", names(origin_meta)[names(origin_meta) %in% c("cep", "latitude", "longitude")])
-  dplyr::left_join(results, origin_meta, by = "origin_id")
+  results <- dplyr::left_join(results, origin_meta, by = "origin_id")
+  attr(results, "routing_diagnostics") <- diagnostics
+  attr(results, "missing_network_modes") <- setdiff(modes, names(graphs))
+  results
 }

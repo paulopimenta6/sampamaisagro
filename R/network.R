@@ -8,7 +8,41 @@ build_network_graphs <- function(osm_lines, modes = c("foot", "bicycle", "motorc
   if (!inherits(osm_lines, "sf")) stop("osm_lines deve ser um objeto sf.")
   allowed <- c("foot", "bicycle", "motorcar")
   modes <- match.arg(modes, allowed, several.ok = TRUE)
-  lapply_stats <- lapply(modes, function(mode) dodgr::weight_streetnet(osm_lines, wt_profile = mode))
+  lapply_stats <- lapply(modes, function(mode) {
+    lines <- osm_lines
+    if (!"oneway" %in% names(lines)) lines$oneway <- rep(NA_character_, nrow(lines))
+    direction <- tolower(as.character(lines$oneway))
+    reverse <- which(!is.na(direction) & direction == "-1")
+    if (length(reverse)) {
+      geometry <- sf::st_geometry(lines)
+      geometry[reverse] <- sf::st_sfc(lapply(geometry[reverse], function(g) {
+        xy <- sf::st_coordinates(g)[, 1:2, drop = FALSE]
+        sf::st_linestring(xy[nrow(xy):1, , drop = FALSE])
+      }), crs = sf::st_crs(lines))
+      sf::st_geometry(lines) <- geometry
+    }
+    explicit_no <- !is.na(direction) & direction %in% c("no", "false", "0")
+    one_way <- !is.na(direction) & direction %in% c("yes", "true", "1", "-1")
+    if ("junction" %in% names(lines)) one_way <- one_way |
+      (!explicit_no & !is.na(lines$junction) & lines$junction %in% c("roundabout", "circular"))
+    uncertain <- !is.na(direction) & !direction %in% c("", "no", "false", "0", "yes", "true", "1", "-1")
+    lines$oneway <- ifelse(one_way & mode != "foot", "yes", "no")
+    # Variable-direction lanes cannot be assigned a defensible fixed direction.
+    keep <- if (mode == "foot") rep(TRUE, nrow(lines)) else !uncertain
+    tag <- if (mode == "motorcar") "motor_vehicle" else mode
+    specific <- if (tag %in% names(lines)) tolower(lines[[tag]]) else rep(NA_character_, nrow(lines))
+    general <- if ("access" %in% names(lines)) tolower(lines$access) else rep(NA_character_, nrow(lines))
+    prohibited <- !is.na(specific) & specific %in% c("no", "private")
+    prohibited <- prohibited | (!is.na(general) & general %in% c("no", "private") &
+      !(specific %in% c("yes", "designated", "permissive")))
+    lines <- lines[keep & !prohibited, , drop = FALSE]
+    graph <- dodgr::weight_streetnet(lines, wt_profile = mode)
+    # Profile penalties encode preferences, not physical shortest/fastest paths.
+    graph$d_weighted <- graph$d
+    graph$time_weighted <- graph$time
+    attr(graph, "direction_access_policy") <- "v2: reversed -1; foot bidirectional; roundabout; explicit private/no excluded; variable oneway excluded for vehicles"
+    graph
+  })
   stats::setNames(lapply_stats, modes)
 }
 

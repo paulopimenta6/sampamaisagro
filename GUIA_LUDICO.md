@@ -1,731 +1,232 @@
-# 🌱 Guia divertido do Sampa+Rural
+# 🌱 Sua feira de dados: um passeio pelo SampaMaisAgro
 
-## O projeto explicado em uma frase
+Pense na aplicação como uma cesta e um mapa: você escolhe de onde sair, e ela mostra o que está perto — hortas, feiras, agricultores, orgânicos e outros registros do Sampa+Rural.
 
-Você informa um lugar — por **CEP** ou **latitude e longitude** — e o projeto procura os aparelhos do Sampa+Rural mais próximos, desenha mapas e prepara tabelas e relatórios para pesquisa.
+O aplicativo usa R. Você não precisa escrever código para fazer as consultas pela tela.
 
-Pense nele como um GPS acadêmico para responder:
+## 1. Primeiro, abra a porta
 
-> “Quais aparelhos do Sampa+Rural estão perto deste lugar e o que significa estar perto?”
+Na pasta do projeto, abra o arquivo app.R e clique em **Run App** no RStudio.
 
----
+Outra opção, no console R:
 
-## 🧭 A viagem completa
+~~~r
+pkgload::load_all(".")
+run_app()
+~~~
 
-```mermaid
+Se faltarem pacotes, restaure o ambiente com renv::restore(). Os comandos precisam ser executados dentro da pasta do projeto.
+
+O mapa inicial já mostra os dados reais guardados no computador. Não é uma simulação.
+
+## 2. Encontre algo perto de um CEP 📍
+
+1. Vá à aba **Explorar**.
+2. Escolha **CEP**.
+3. Digite **05586-001**.
+4. Deixe “Tipos de equipamento” vazio para pesquisar todos.
+5. Use raio **5000** e k **10**.
+6. Clique em **Encontrar equipamentos**.
+
+Você verá a origem aproximada na região da Rua Iquiririm, pontos próximos no mapa e uma tabela de resultados.
+
+**Atenção:** o CEP não é o ponto exato de uma casa. O sistema informa as coordenadas e quem forneceu a localização. Para mais precisão, use uma coordenada conhecida e verificada.
+
+## 3. Prefere latitude e longitude?
+
+Troque a opção de origem para **Latitude e longitude**.
+
+~~~text
+Latitude:  -23.571872
+Longitude: -46.730196
+~~~
+
+Latitude vem primeiro. Em São Paulo, as duas são negativas. Use ponto para os decimais. Em um arquivo, não misture CEP e coordenadas preenchidos na mesma linha.
+
+## 4. Escolha os ingredientes da cesta 🥬
+
+Em **Tipos de equipamento**, você pode combinar:
+
+- Feiras livres e feiras orgânicas.
+- Hortifrutis e sacolões.
+- Abastecimento, CEASA e CEAGESP, quando registrados na fonte.
+- Alimentos e comércio de orgânicos.
+- Hortas, agricultores e produção rural.
+- Comércio de alimentos, iniciativas e serviços de apoio.
+- Vivência rural e aldeias, além de outros registros da fonte.
+
+Sem seleção, entram todos os tipos. Um perfil pode pertencer a mais de um grupo.
+
+Esses grupos são construídos a partir de nomes, categorias, subcategorias e qualificações do cadastro. Por isso, podem precisar de revisão para a sua dissertação. Um box na CEAGESP não é a mesma coisa que a central inteira; “orgânico” não significa que verificamos uma certificação.
+
+## 5. Raio e k: duas peneiras, uma cesta
+
+Imagine:
+
+~~~text
+Entram na cesta:
+   dentro do raio
+         OU
+   entre os k primeiros
+~~~
+
+Com raio de 1.000 m e k = 10, se houver só três registros no raio, a lista pode trazer outros sete mais distantes.
+
+A coluna **No raio?** permite separar os dois casos. O aplicativo não transforma “fora do raio” em “dentro” só para completar a lista.
+
+Os cartões acima do mapa e a tabela correspondem à distância escolhida em **Distância exibida**. A mensagem geral conta a união das métricas; esse total pode ser maior que o cartão.
+
+## 6. Por que há tantas réguas? 📏
+
+| Régua | Imagine assim |
+|---|---|
+| Karney | Distância pela superfície curva da Terra, usando um elipsoide |
+| Haversine | Uma versão que representa a Terra como esfera |
+| Euclidiana | Uma linha reta no mapa projetado |
+| Manhattan | Somar deslocamentos em dois eixos do mapa |
+| Chebyshev | Usar o maior deslocamento entre esses eixos |
+| Rede | Percorrer as vias cadastradas para um modo de transporte |
+
+Manhattan e Chebyshev **não desenham ruas**. Para caminhos de rua, selecione a pé, bicicleta ou carro. Cada modo oferece:
+
+- Menor distância.
+- Menor tempo estimado.
+
+O tempo é modelado, sem trânsito ao vivo. Ida e volta podem diferir por causa de sentidos das vias. O mapa mostra os equipamentos e a origem, não o traçado das rotas.
+
+## 7. E acessibilidade? ♿
+
+O filtro separa:
+
+- **Informada: sim**.
+- **Informada: não**.
+- **Não informada**.
+
+“Não informada” não quer dizer “não acessível”. E “sim” não garante calçadas, rampas ou uma rota adequada à necessidade de cada pessoa. É uma declaração da fonte, não uma vistoria.
+
+## 8. Onde estão os gráficos?
+
+Abra **Estatísticas**, depois de consultar.
+
+Você encontra a cobertura da base por tipo, o histograma de distâncias, o resumo por origem/métrica e a comparação entre réguas.
+
+A mediana é o valor do meio: metade das distâncias selecionadas fica abaixo dela, metade acima. O percentil 90 é o valor abaixo do qual ficam 90% das distâncias selecionadas.
+
+A palavra importante é **selecionadas**: o resumo usa a cesta da consulta, não toda a cidade ou toda a população.
+
+## 9. Vários lugares de uma vez 🧺
+
+Abra **Lotes**, baixe o exemplo e envie seu arquivo.
+
+~~~csv
+query_id,cep,latitude,longitude,k,radius_m
+casa-estudo,05586001,,,10,2000
+praca-estudo,,-23.55008,-46.63408,5,1000
+~~~
+
+- query_id: um nome único para cada origem.
+- cep: oito dígitos, incluindo o zero inicial. Trate como texto no Excel.
+- latitude/longitude: as coordenadas, quando não usar CEP.
+- k e radius_m: opcionais; se vazios, usam os valores da tela.
+
+Clique em **Analisar lote**. As linhas com problema aparecem na tabela de erros; as válidas continuam.
+
+Depois, visite **Explorar** e **Estatísticas** para os resultados combinados. O ZIP contém CSV, partições Parquet, estatísticas, manifesto e erros. A interface aceita até 100 origens por execução; para volumes maiores, use o comando de lotes descrito no README.
+
+Não publique lotes com endereços pessoais identificáveis.
+
+## 10. A despensa offline 💾
+
+A internet serve para encher a despensa. Depois, a consulta usa o que está guardado.
+
+~~~mermaid
 flowchart LR
-    A[📥 Baixar os dados] --> B[🧹 Limpar e conferir]
-    B --> C[📍 Informar CEP ou coordenadas]
-    C --> D[📏 Calcular as distâncias]
-    D --> E[🗺️ Criar mapas]
-    D --> F[📊 Fazer análises]
-    E --> G[📄 Gerar relatórios]
-    F --> G
-```
+    A[Com internet: preparar] --> B[CSV e JSON oficiais]
+    A --> C[CEPs preparados]
+    A --> D[Mapa e vias locais]
+    B --> E[Sem internet: consultar]
+    C --> E
+    D --> E
+    E --> F[Mapa, tabelas e relatórios]
+~~~
 
-O projeto faz sete coisas principais:
+Na aba **Banco offline**, confira os arquivos, formatos, contagens e os CEPs disponíveis.
 
-1. baixa os dados públicos;
-2. guarda uma cópia com data e checksum;
-3. verifica problemas como coordenadas ausentes;
-4. transforma CEPs em coordenadas;
-5. calcula diferentes tipos de distância;
-6. cria mapas e análises estatísticas;
-7. gera arquivos que podem ser usados na pesquisa.
+Os arquivos principais ficam em:
 
----
+~~~text
+data/raw/          alimentos na embalagem original: CSV e JSON
+data/processed/    ingredientes organizados: banco e grafos
+data/cache/cep/    índice de CEPs já preparados
+data/osm/          limite municipal e vias do mapa
+~~~
 
-## 🎒 O que você precisa
+Copiar só o código para outro computador não copia essa despensa. Para transferir uma instalação offline, leve também os dados preparados e as dependências R, respeitando privacidade e licenças.
 
-Antes de começar, tenha:
+### Um CEP novo não funciona offline?
 
-- R instalado;
-- conexão com a internet para baixar dados e consultar CEPs;
-- autorização para a coleta automatizada;
-- um contato real para identificar o projeto;
-- opcionalmente, um arquivo do OpenStreetMap para calcular caminhos pelas ruas.
+Isso é esperado se ele ainda não foi preparado. Com internet, rode:
 
-Você **não precisa saber programar muito** para testar a aplicação. Os comandos principais já estão prontos.
+~~~bash
+Rscript scripts/prepare_ceps.R 01311000
+~~~
 
----
+Ou prepare os CEPs de um arquivo:
 
-## 🚀 Primeiro passeio: abrir a aplicação demonstrativa
+~~~bash
+Rscript scripts/prepare_ceps.R meus-ceps.csv
+~~~
 
-Abra o terminal dentro da pasta do projeto e execute:
+Depois abra a aplicação novamente. O projeto não inclui todos os CEPs do Brasil; não inventa coordenadas para preencher essa falta.
 
-```bash
-Rscript -e 'renv::restore()'
-Rscript scripts/run_app.R
-```
+### Como baixar os dados em uma máquina nova?
 
-Depois, abra no navegador o endereço apresentado pelo R, normalmente parecido com:
+~~~bash
+Rscript scripts/prepare_offline.R
+~~~
 
-```text
-http://127.0.0.1:3838
-```
+Essa etapa pode demorar, principalmente para construir as redes. Para atualizar só o cadastro:
 
-### O que acontece nesse modo?
-
-A aplicação usa 12 pontos inventados para demonstração. Uma faixa amarela avisa que os dados são sintéticos.
-
-Esse modo serve para:
-
-- conhecer as telas;
-- testar CEP ou coordenadas;
-- aprender a ler o resultado;
-- verificar se a instalação está funcionando.
-
-⚠️ **Não use os dados demonstrativos em uma dissertação ou artigo.**
-
----
-
-## 📥 Como baixar os dados verdadeiros
-
-### Passo 1 — Identifique sua pesquisa
-
-Abra o arquivo [`config.yml`](config.yml) e localize:
-
-```yaml
-user_agent: "sampamaisrural-academic/0.1.0 (contato: pesquisa@example.org)"
-```
-
-Troque `pesquisa@example.org` pelo seu contato real. Por exemplo:
-
-```yaml
-user_agent: "sampamaisrural-academic/0.1.0 (contato: pesquisador@universidade.br)"
-```
-
-O coletor não funciona com o endereço de exemplo. Isso é proposital: o servidor público precisa saber quem está fazendo a coleta.
-
-### Passo 2 — Confirme a autorização
-
-No mesmo arquivo, confirme:
-
-```yaml
-collection:
-  authorized: true
-```
-
-Use `true` somente se a autorização continuar válida.
-
-### Passo 3 — Execute a coleta
-
-```bash
+~~~bash
 Rscript scripts/update_data.R
-```
+~~~
 
-O projeto vai:
+A atualização cria um snapshot novo. Os arquivos anteriores permanecem preservados.
 
-- consultar o catálogo do Sampa+Rural;
-- baixar os relatórios JSON e CSV;
-- esperar entre as requisições;
-- tentar novamente quando houver uma falha temporária;
-- calcular checksums;
-- normalizar a base completa;
-- separar registros com problemas espaciais.
+## 11. Leve o resultado com você 📄
 
-### Onde ficam os arquivos?
+Na aba Explorar:
 
-```text
-data/
-├── raw/          ← cópia original, organizada por data
-├── processed/    ← base limpa para análise
-├── cache/        ← respostas de CEP já consultadas
-└── osm/          ← lugar sugerido para arquivos OpenStreetMap
-```
+- **Resultados CSV**: todas as métricas calculadas, não apenas a que aparece na tela.
+- **Relatório HTML**: mapa, tabelas, gráficos e limitações, em um arquivo que pode ser aberto offline.
 
-Os dados originais não são substituídos. Cada data de coleta funciona como uma fotografia do portal naquele momento.
+O relatório PDF também pode ser gerado pelo R; o exemplo está no README. É necessário ter LaTeX instalado.
 
----
+Os relatórios são um ponto de partida para sua pesquisa, não um texto pronto com conclusões causais.
 
-## 🧹 O que significa “limpar os dados”?
+## 12. Quando algo parecer estranho
 
-Imagine uma caixa de frutas. Antes de fazer a feira, precisamos separar:
-
-- frutas prontas para uso;
-- frutas sem etiqueta;
-- frutas com informação incompleta;
-- frutas que foram colocadas na caixa errada.
-
-O projeto faz algo parecido com as coordenadas:
-
-| Situação | O que significa | O que o projeto faz |
-|---|---|---|
-| Coordenada válida | O ponto pode ser colocado no mapa | Entra nos cálculos |
-| Coordenada ausente | Latitude e longitude não existem | Vai para quarentena |
-| Coordenada incompleta | Só latitude ou só longitude | Vai para quarentena |
-| Coordenada inválida | Valor impossível, como latitude 95 | Vai para quarentena |
-| Fora da área | Ponto distante da área configurada | Vai para quarentena |
-
-“Quarentena” não significa apagar. O registro continua contado no relatório de qualidade, mas não participa de um cálculo espacial que produziria resultado enganoso.
-
----
-
-## 📍 Como informar um lugar
-
-Existem duas opções.
-
-### Opção A — Latitude e longitude
-
-Exemplo do centro de São Paulo:
-
-```text
-Latitude:  -23.5505
-Longitude: -46.6333
-```
-
-Essa costuma ser a opção mais precisa quando as coordenadas foram obtidas de uma fonte confiável.
-
-### Opção B — CEP
-
-Exemplo:
-
-```text
-01001-000
-```
-
-O projeto consulta a BrasilAPI e guarda a resposta em cache. Se o mesmo CEP aparecer outra vez, não é necessário repetir a consulta externa.
-
-⚠️ Um CEP representa uma área ou um ponto de referência. Ele não deve ser interpretado automaticamente como a posição exata de uma residência.
-
-### Regra de ouro
-
-Em uma mesma linha, informe:
-
-- **CEP**, ou
-- **latitude e longitude**.
-
-Não informe as duas opções ao mesmo tempo.
-
----
-
-## 📏 Por que existem tantas distâncias?
-
-Porque “perto” pode ter significados diferentes.
-
-Imagine que você e um amigo estão separados por um rio:
-
-- em linha reta, vocês parecem próximos;
-- caminhando até uma ponte, o caminho pode ser longo;
-- de carro, uma rua de mão única pode obrigar uma volta;
-- de bicicleta, uma via pode ser permitida ou proibida.
-
-Por isso, o projeto não escolhe escondido uma única resposta.
-
-### Distâncias geométricas
-
-| Distância | Analogia simples | Uso principal |
-|---|---|---|
-| Karney | Uma fita métrica acompanhando a forma elipsoidal da Terra | Principal distância geodésica |
-| Haversine | Uma fita sobre uma Terra perfeitamente redonda | Comparação com uma aproximação esférica |
-| Euclidiana | Uma régua reta sobre um mapa plano | Separação direta no sistema projetado |
-| Manhattan | Andar por quarteirões, somente horizontal e vertical | Cenário de grade ortogonal |
-| Chebyshev | Um rei do xadrez que pode andar também na diagonal | Cenário geométrico com movimento diagonal |
-
-Karney e Haversine usam longitude e latitude. Euclidiana, Manhattan e Chebyshev usam o sistema métrico **SIRGAS 2000 / UTM 23S — EPSG:31983**.
-
-### Distâncias pela rede de ruas
-
-Quando os grafos OpenStreetMap estão disponíveis, o projeto calcula:
-
-| Modo | Caminho mais curto | Caminho mais rápido |
-|---|---:|---:|
-| 🚶 Caminhada | Sim | Sim |
-| 🚲 Bicicleta | Sim | Sim |
-| 🚗 Automóvel | Sim | Sim |
-
-O caminho mais curto reduz os metros percorridos. O caminho mais rápido reduz o tempo estimado. Eles podem escolher ruas diferentes.
-
-### Ida e volta podem ser diferentes
-
-Em redes com mão única ou restrições:
-
-```text
-origem → aparelho
-```
-
-pode ser diferente de:
-
-```text
-aparelho → origem
-```
-
-Na aplicação, escolha “Ambos” para calcular os dois sentidos.
-
----
-
-## 🛣️ Como ativar as distâncias pelas ruas
-
-Sem um arquivo de rede, as cinco distâncias geométricas continuam funcionando.
-
-Para ativar caminhada, bicicleta e automóvel, obtenha um arquivo `.osm.pbf` com a região de São Paulo. Guarde a data, o endereço de origem e a licença do arquivo.
-
-Depois execute:
-
-```bash
-Rscript scripts/prepare_network.R data/osm/sao-paulo.osm.pbf limite-municipal.gpkg
-```
-
-O segundo arquivo é o limite espacial e é opcional. Sem ele:
-
-```bash
-Rscript scripts/prepare_network.R data/osm/sao-paulo.osm.pbf
-```
-
-Serão criados:
-
-```text
-data/processed/network_foot.rds
-data/processed/network_bicycle.rds
-data/processed/network_motorcar.rds
-```
-
-### O que é snapping?
-
-Snapping é ligar um ponto à rede de ruas.
-
-```text
-📍 ponto informado  ·····  🛣️ rua
-                    ↑
-              distância de snapping
-```
-
-- Até 250 metros: uso normal.
-- Acima de 250 metros: o resultado recebe um alerta.
-- Acima de 1.000 metros: o par é excluído da rota.
-- Sem caminho possível: o par recebe o estado `unreachable`.
-
-Esses valores estão em `config.yml` e podem ser usados em análises de sensibilidade.
-
----
-
-## 🖥️ Conhecendo a aplicação
-
-### Aba “Consulta”
-
-É o lugar para uma consulta individual.
-
-1. escolha coordenadas ou CEP;
-2. informe a origem;
-3. escolha categorias, se desejar;
-4. defina o número de vizinhos;
-5. defina o raio;
-6. escolha os modos de rede;
-7. escolha o sentido;
-8. clique em **Calcular proximidade**.
-
-O mapa permite trocar a métrica exibida. A tabela pode ser filtrada e o resultado pode ser baixado em CSV.
-
-### Aba “Lotes”
-
-Recebe arquivos com várias origens. O trabalho entra em uma fila para não travar a aplicação.
-
-### Aba “Estatísticas”
-
-Mostra cobertura por categoria e concordância entre as métricas da consulta.
-
-### Aba “Qualidade”
-
-Mostra quantos registros possuem coordenadas úteis e quais problemas foram encontrados.
-
-### Aba “Metodologia”
-
-Resume as definições, limitações e cuidados éticos.
-
----
-
-## 📦 Consultando muitas origens
-
-### Arquivo por coordenadas
-
-Crie `origens.csv`:
-
-```csv
-query_id,latitude,longitude,k,radius_m
-escola_1,-23.5505,-46.6333,10,5000
-escola_2,-23.6200,-46.7000,20,3000
-```
-
-### Arquivo por CEP
-
-```csv
-query_id,cep,k,radius_m
-local_1,01001000,10,5000
-local_2,01310100,15,3000
-```
-
-### Significado das colunas
-
-| Coluna | Tradução |
+| Situação | O que verificar |
 |---|---|
-| `query_id` | Nome único criado por você para a origem |
-| `cep` | CEP com oito dígitos |
-| `latitude` | Posição norte/sul |
-| `longitude` | Posição leste/oeste |
-| `k` | Quantos vizinhos mais próximos procurar |
-| `radius_m` | Raio de procura em metros |
+| CEP ausente | Prepare o CEP com internet ou use coordenadas verificadas |
+| Nenhum resultado | Remova filtros; confira coordenadas e presença da base |
+| Muitos pontos de uma categoria | O cadastro e os grupos podem se sobrepor; não são um censo |
+| Rede não aparece | Prepare os grafos e reinicie a aplicação |
+| Caminho indisponível | Pode haver desconexão, recorte da rede ou ponto longe das vias |
+| Mapa sem fotos de ruas | É intencional: o fundo usa vetores locais, sem tiles externos |
+| RStudio abre comportamento antigo | Execute app.R da pasta atual; reinicie R e carregue o projeto |
+| Lote perde o zero do CEP | Salve a coluna como texto; um CEP de sete dígitos é rejeitado |
 
-O limite padrão da aplicação web é de 100 mil linhas.
+## 13. O chapéu de pesquisador 🎓
 
-### Executando pelo terminal
+Antes de analisar a dissertação, decida quais grupos, raios, modos e origens representam sua pergunta. Guarde as decisões no protocolo.
 
-```bash
-Rscript scripts/batch.R \
-  --input=origens.csv \
-  --output=outputs/meu-lote \
-  --modes=foot,bicycle,motorcar \
-  --direction=both
-```
+Registre a data do cadastro, a fonte do CEP, a versão da rede e as exclusões. Coordenadas ausentes podem se concentrar justamente nos agricultores menos cadastrados: isso cria viés.
 
-### Executando pela aplicação
+A base contém perfis; repetições exatas são removidas, mas dois perfis diferentes podem representar uma única instalação. Valide uma amostra manualmente.
 
-1. abra a aba **Lotes**;
-2. escolha o arquivo;
-3. clique em **Adicionar à fila**;
-4. deixe o worker funcionando em outro terminal:
+O retângulo de triagem inclui pontos vizinhos ao município. Use within_municipality para comparar com o limite IBGE, lembrando que é uma malha simplificada.
 
-```bash
-Rscript scripts/worker.R
-```
+Uma horta perto de alguém **não prova** alimentação adequada ou acesso efetivo. Preço, horário, transporte, condições físicas e qualidade dos alimentos não são medidos por estas distâncias.
 
-5. acompanhe o estado do lote;
-6. informe o ID de um lote concluído;
-7. baixe o arquivo ZIP.
-
-### Estados de um lote
-
-```text
-queued → running → completed
-                   ↘ failed
-```
-
-Em português:
-
-- `queued`: esperando na fila;
-- `running`: sendo processado;
-- `completed`: concluído;
-- `failed`: ocorreu uma falha.
-
-O processamento usa blocos e checkpoints. Se o worker parar, o trabalho pode continuar dos blocos já concluídos.
-
----
-
-## 🔍 Como ler o resultado
-
-Cada linha representa:
-
-```text
-uma origem × um aparelho × uma métrica × um sentido
-```
-
-Campos importantes:
-
-| Campo | Pergunta respondida |
-|---|---|
-| `origin_id` | De qual origem estamos falando? |
-| `equipment_name` | Qual é o aparelho? |
-| `category` | A qual categoria pertence? |
-| `metric_id` | Qual régua foi usada? |
-| `direction` | Foi ida, volta ou distância simétrica? |
-| `distance_m` | Quantos metros? |
-| `duration_min` | Quantos minutos estimados? |
-| `rank` | É o primeiro, segundo ou terceiro mais próximo? |
-| `within_radius` | Está dentro do raio escolhido? |
-| `routing_status` | A rota funcionou ou recebeu alerta? |
-
-O resultado guarda a união de:
-
-- aparelhos dentro do raio; e
-- os `k` aparelhos mais próximos de cada métrica.
-
-Assim, um aparelho pode aparecer mesmo estando fora do raio, caso ainda esteja entre os `k` mais próximos.
-
----
-
-## 🗺️ Criando mapas em R
-
-```r
-library(sampamaisrural)
-
-config <- read_sampa_config()
-aparelhos <- load_equipment_data(config)
-
-origem <- data.frame(
-  query_id = "centro",
-  latitude = -23.5505,
-  longitude = -46.6333,
-  k = 10,
-  radius_m = 5000
-)
-
-resultado <- calculate_proximity(
-  origins = origem,
-  equipment = aparelhos,
-  graphs = load_network_graphs(config),
-  directions = "both",
-  config = config
-)
-
-create_interactive_map(resultado)
-create_static_map(resultado)
-```
-
-O primeiro mapa é interativo. O segundo é um objeto `ggplot2`, adequado para personalização e figuras acadêmicas.
-
----
-
-## 📊 Estatística sem sustos
-
-### Concordância entre métricas
-
-```r
-metric_agreement(resultado, k = 10)
-```
-
-O projeto calcula:
-
-- Spearman e Kendall: verificam se as métricas ordenam os aparelhos de forma parecida;
-- Jaccard top-k: verifica quanto as listas de vizinhos se sobrepõem;
-- Bland–Altman: mostra diferenças entre pares de distâncias.
-
-Nenhuma métrica é tratada automaticamente como verdade absoluta.
-
-### Grade hexagonal
-
-```r
-grade <- create_hex_grid(aparelhos, cell_size_m = 2000)
-```
-
-É como cobrir o mapa com uma colmeia e contar quantos aparelhos caem em cada célula.
-
-### Modelo de contagem
-
-```r
-modelo <- fit_spatial_count_model(grade)
-modelo$selected_family
-modelo$dispersion
-modelo$moran
-```
-
-O projeto compara Poisson e binomial negativa, examina sobredispersão e tenta calcular Moran para os resíduos.
-
-⚠️ O modelo é exploratório e associacional. Encontrar uma associação não prova causalidade.
-
----
-
-## 📄 Criando relatórios
-
-```r
-render_proximity_report(
-  results = resultado,
-  output_file = "outputs/relatorio.html",
-  equipment = aparelhos,
-  config = config
-)
-```
-
-Para PDF:
-
-```r
-render_proximity_report(
-  results = resultado,
-  output_file = "outputs/relatorio.pdf",
-  equipment = aparelhos,
-  config = config
-)
-```
-
-O relatório inclui:
-
-- proveniência;
-- resumo das distâncias;
-- curva de distribuição;
-- concordância entre métricas;
-- tabela detalhada;
-- limitações;
-- orientações de reprodutibilidade.
-
----
-
-## 🔬 Cuidados para o mestrado
-
-Antes de olhar os resultados principais, escreva suas escolhas:
-
-- Qual é a população estudada?
-- Qual snapshot será usado?
-- Quais categorias entram?
-- Qual é a distância principal?
-- Qual será o raio?
-- Quantos vizinhos serão considerados?
-- A análise usa caminhada, bicicleta ou automóvel?
-- O sentido é ida, volta ou ambos?
-- Qual é a unidade territorial?
-- Quais análises são confirmatórias e quais são exploratórias?
-
-Leia o [`PROTOCOL.md`](PROTOCOL.md) para o plano científico completo.
-
-### Quatro armadilhas comuns
-
-1. **Cadastro incompleto:** ausência no mapa não significa ausência no território.
-2. **CEP aproximado:** não representa necessariamente um endereço exato.
-3. **Rede desatualizada:** o OpenStreetMap muda com o tempo.
-4. **Correlação não é causa:** proximidade pode estar relacionada a renda, densidade, uso do solo e outras variáveis.
-
----
-
-## 🔐 Privacidade e ética
-
-- Não publique coordenadas individuais das origens.
-- Não envie arquivos sensíveis para repositórios públicos.
-- Telefones, e-mails e redes sociais da fonte não entram na base analítica.
-- Prefira mapas agregados para divulgação.
-- Mantenha `data/`, `jobs/` e `outputs/` fora do Git.
-- Registre quem pode acessar snapshots brutos.
-- Apague lotes quando terminar o prazo de retenção.
-
-O ZIP de um lote concluído não inclui o arquivo original de origens.
-
----
-
-## 🧪 Como verificar se tudo está saudável
-
-### Testes automatizados
-
-```bash
-Rscript -e 'testthat::test_local()'
-```
-
-### Verificação completa do pacote
-
-```bash
-R CMD check --no-manual .
-```
-
-### Teste rápido no R
-
-```r
-library(sampamaisrural)
-nrow(demo_equipment())
-```
-
-O resultado esperado é:
-
-```text
-12
-```
-
----
-
-## 🧯 Problemas comuns
-
-### “Substitua o contato de exemplo”
-
-Edite o `user_agent` em `config.yml` e informe um contato institucional real.
-
-### “Nenhum snapshot processado encontrado”
-
-Execute:
-
-```bash
-Rscript scripts/update_data.R
-```
-
-### A aplicação mostra “Modo demonstração”
-
-Os dados oficiais ainda não foram processados ou não foram encontrados em `data/processed/`.
-
-### As distâncias de rede não aparecem
-
-Prepare o arquivo OpenStreetMap com `scripts/prepare_network.R` e reinicie a aplicação.
-
-### Um CEP não possui coordenadas
-
-Alguns CEPs podem não ser encontrados ou podem não trazer uma coordenada utilizável. Consulte o arquivo de erros do lote.
-
-### O lote ficou em `queued`
-
-Inicie o worker:
-
-```bash
-Rscript scripts/worker.R
-```
-
-### O lote ficou em `failed`
-
-Leia a mensagem da fila e `validation_errors.csv`. Corrija o arquivo de entrada e envie um novo lote.
-
----
-
-## 🗂️ Mapa da pasta do projeto
-
-```text
-sampamaisrual/
-├── R/                    ← funções do pacote
-├── scripts/              ← comandos prontos
-├── tests/                ← testes automáticos
-├── inst/reports/         ← modelo do relatório
-├── inst/app/             ← textos e estilo da aplicação
-├── data/                 ← dados locais, fora do Git
-├── jobs/                 ← fila e arquivos temporários
-├── outputs/              ← mapas e relatórios
-├── config.yml            ← configurações do pesquisador
-├── _targets.R            ← pipeline reprodutível
-├── renv.lock             ← versões dos pacotes
-├── PROTOCOL.md           ← protocolo científico
-├── CODEBOOK.md           ← dicionário de dados
-└── README.md              ← apresentação técnica
-```
-
----
-
-## 📚 Minidicionário
-
-| Palavra | Explicação simples |
-|---|---|
-| API | Porta organizada para um sistema entregar dados |
-| Cache | Gaveta que guarda uma resposta para reutilização |
-| Checksum | Impressão digital de um arquivo |
-| CRS | Regra usada para representar posições no mapa |
-| Grafo | Conjunto de ruas e cruzamentos usado no roteamento |
-| Manifesto | Lista do que foi baixado ou produzido |
-| Parquet | Formato compacto e rápido para tabelas grandes |
-| Quarentena | Lugar para registros problemáticos sem apagá-los |
-| Snapshot | Fotografia dos dados em uma data |
-| Snapping | Ligação de um ponto à rede de ruas |
-| Worker | Processo que retira trabalhos da fila e os executa |
-
----
-
-## ✅ Checklist do primeiro resultado real
-
-- [ ] Li a autorização de coleta.
-- [ ] Troquei o contato de exemplo em `config.yml`.
-- [ ] Executei `renv::restore()`.
-- [ ] Executei `scripts/update_data.R`.
-- [ ] Conferi o relatório de qualidade.
-- [ ] Registrei a data do snapshot.
-- [ ] Preparei o OpenStreetMap, caso use distâncias de rede.
-- [ ] Defini `k`, raio, modo e sentido antes da análise principal.
-- [ ] Testei uma origem conhecida.
-- [ ] Documentei limitações e análises de sensibilidade.
-- [ ] Evitei publicar origens individuais.
-- [ ] Gerei e arquivei o manifesto e o relatório.
-
----
-
-## 🌿 Resumo final
-
-Se você lembrar apenas de quatro coisas, lembre destas:
-
-1. **CEP e coordenada não têm a mesma precisão.**
-2. **Distância em linha reta e caminho pelas ruas respondem a perguntas diferentes.**
-3. **Dados ausentes continuam importantes para avaliar a qualidade da pesquisa.**
-4. **Um mapa mostra padrões, mas sozinho não demonstra causalidade.**
-
-Agora o caminho mais simples é:
-
-```text
-restaurar pacotes → baixar dados → conferir qualidade → preparar rede → abrir aplicação
-```
-
-Boa pesquisa! 🌱🗺️📊
+Boa pesquisa começa com uma pergunta clara — e uma cesta de dados cuja origem você conhece. 🌱

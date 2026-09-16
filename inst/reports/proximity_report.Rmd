@@ -1,10 +1,15 @@
 ---
 title: "Relatorio de proximidade aos equipamentos Sampa+Rural"
 date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+header-includes:
+  - '\usepackage{longtable}'
+  - '\usepackage{booktabs}'
 output:
   html_document:
     toc: true
     toc_float: true
+    self_contained: true
+    mathjax: null
   pdf_document:
     toc: true
 params:
@@ -15,12 +20,24 @@ params:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 8, fig.height = 5)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, results = "asis",
+  fig.width = 7, fig.height = 4, out.width = "95%")
 results <- params$results
 origins <- params$origins
 equipment <- params$equipment
+report_table <- function(x, ...) {
+  cat(knitr::kable(x, format = if (knitr::is_latex_output()) "latex" else "html",
+    longtable = knitr::is_latex_output(), booktabs = knitr::is_latex_output(), row.names = FALSE,
+    label = NA, ...),
+    sep = "\n")
+  cat("\n\n")
+}
+page_break <- function() if (knitr::is_latex_output()) cat("\n\\clearpage\n\n")
 abbreviate_metric <- function(x) {
   replacements <- c(
+    network_foot_shortest = "PE_DIST", network_foot_fastest = "PE_TEMPO",
+    network_bicycle_shortest = "BIKE_DIST", network_bicycle_fastest = "BIKE_TEMPO",
+    network_motorcar_shortest = "CAR_DIST", network_motorcar_fastest = "CAR_TEMPO",
     geodesic_karney = "KARNEY", geodesic_haversine = "HAVERSINE",
     euclidean_projected = "EUCLIDEAN", manhattan_projected = "MANHATTAN",
     chebyshev_projected = "CHEBYSHEV", network_foot = "NET_FOOT",
@@ -45,10 +62,28 @@ provenance <- data.frame(
   valor = c(length(unique(results$origin_id)), length(unique(results$equipment_id)),
     length(unique(results$metric_id)), paste(unique(na.omit(results$snapshot_date)), collapse = ", "))
 )
-knitr::kable(provenance)
+report_table(provenance)
 ```
 
 # Resultados
+
+Os resumos abaixo descrevem apenas os pares retidos: dentro do raio **ou** entre
+os k primeiros de cada origem/métrica. Eles não estimam a distribuição de acesso
+da população de São Paulo. A mesma instalação pode aparecer em várias métricas;
+não some as linhas para contar estabelecimentos. Os tempos de rede são modelados,
+sem trânsito em tempo real, sem avaliação de calçadas e sem garantia de acessibilidade.
+
+```{r map, fig.cap="Localização dos registros selecionados e da origem aproximada. Mapa gerado com dados locais."}
+print(sampamaisrural::create_static_map(results, "geodesic_karney"))
+```
+
+```{r quality}
+page_break()
+if (!is.null(equipment) && nrow(equipment)) {
+  report_table(sampamaisrural::validate_equipment(equipment, params$config)$summary,
+    digits = 1, caption = "Cobertura de coordenadas na base fornecida ao relatório.")
+}
+```
 
 ```{r summary}
 summary_table <- results |>
@@ -60,16 +95,23 @@ summary_table <- results |>
     dentro_raio = sum(within_radius, na.rm = TRUE),
     .groups = "drop"
   )
-knitr::kable(summary_table, digits = 1)
+summary_table$metric_id <- abbreviate_metric(summary_table$metric_id)
+summary_table$direction <- abbreviate_metric(summary_table$direction)
+report_table(summary_table, digits = 1)
 ```
 
 ```{r chart, fig.cap="Distribuicao das distancias segundo a metrica."}
+page_break()
 if (nrow(results)) {
   print(ggplot2::ggplot(results, ggplot2::aes(distance_m / 1000, colour = metric_id)) +
     ggplot2::stat_ecdf(geom = "step", na.rm = TRUE) +
     ggplot2::theme_minimal() +
     ggplot2::labs(x = "Distancia (km)", y = "Proporcao acumulada", colour = "Metrica"))
 }
+```
+
+```{r agreement-page}
+page_break()
 ```
 
 # Concordancia entre metricas
@@ -87,12 +129,12 @@ if (nrow(agreement) && "metric_a" %in% names(agreement)) {
   names(rank_table) <- c("origem", "A", "B", "n", "rho", "tau", "Jaccard")[seq_along(rank_table)]
   difference_table <- agreement[, difference_columns, drop = FALSE]
   names(difference_table) <- c("origem", "A", "B", "dif_m", "lim_inf_m", "lim_sup_m")[seq_along(difference_table)]
-  knitr::kable(rank_table, digits = 3,
+  report_table(rank_table, digits = 3,
     caption = "Concordancia de ordenacao e dos conjuntos top-k.")
-  knitr::kable(difference_table, digits = 1,
+  report_table(difference_table, digits = 1,
     caption = "Diferencas pareadas e limites de concordancia (metros).")
 } else {
-  knitr::kable(agreement, digits = 3)
+  report_table(agreement, digits = 3)
 }
 ```
 
@@ -110,7 +152,7 @@ details <- data.frame(
 )
 if (any(is.finite(results$duration_min))) details$tempo_min <- results$duration_min
 if (any(results$routing_status != "not_applicable", na.rm = TRUE)) details$status <- results$routing_status
-knitr::kable(utils::head(details, 200), digits = 1, caption = "Primeiras 200 combinacoes selecionadas.")
+report_table(utils::head(details, 200), digits = 1, caption = "Primeiras 200 combinacoes selecionadas.")
 ```
 
 # Limitacoes e interpretacao
@@ -121,6 +163,8 @@ knitr::kable(utils::head(details, 200), digits = 1, caption = "Primeiras 200 com
 - O caminho de menor distancia e o caminho de menor tempo respondem a perguntas diferentes.
 - Comparacoes territoriais sao descritivas. Modelos apresentados pelo projeto sao associacionais e nao causais.
 - Enderecos e coordenadas de consulta nao devem ser publicados em nivel individual.
+- A triagem usa o retângulo de estudo da configuração; pontos adjacentes ao município podem permanecer. within_municipality permite comparação com a malha simplificada IBGE.
+- A base contém perfis; apenas repetições exatas são removidas. Contagem de perfis não equivale necessariamente a estabelecimentos físicos únicos.
 
 # Reprodutibilidade
 

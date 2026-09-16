@@ -6,7 +6,7 @@
 \usage{
 collect_sampa_data(
   config = read_sampa_config(),
-  snapshot_date = as.character(Sys.Date()),
+  snapshot_date = format(Sys.time(), "\%Y\%m\%dT\%H\%M\%SZ", tz = "UTC"),
   formats = c("json", "csv"),
   include_terms = TRUE
 )

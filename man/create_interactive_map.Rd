@@ -11,7 +11,7 @@ create_interactive_map(results, origins = NULL, metric_id = NULL)
 
 \item{origins}{Optional resolved origins.}
 
-\item{metric_id}{Metric to display; defaults to the first one.}
+\item{metric_id}{Metric to display.}
 }
 \value{
 A Leaflet HTML widget.

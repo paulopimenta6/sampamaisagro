@@ -10,7 +10,7 @@ perform_request <- function(url, config, etag = NULL) {
 response_headers_selected <- function(response) {
   headers <- httr2::resp_headers(response)
   keep <- intersect(names(headers), c("etag", "last-modified", "content-type", "content-length", "date"))
-  as.list(headers[keep])
+  stats::setNames(as.list(as.character(headers[keep])), keep)
 }
 
 download_versioned_file <- function(url, destination, config) {
@@ -47,7 +47,7 @@ download_versioned_file <- function(url, destination, config) {
 #' @param include_terms Whether to archive the public terms page.
 #' @return A manifest data frame, invisibly.
 #' @export
-collect_sampa_data <- function(config = read_sampa_config(), snapshot_date = as.character(Sys.Date()),
+collect_sampa_data <- function(config = read_sampa_config(), snapshot_date = format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC"),
                                formats = c("json", "csv"), include_terms = TRUE) {
   if (!isTRUE(config$collection$authorized)) {
     stop("Coleta bloqueada: registre a autorizacao em config.yml antes de executar.")
@@ -57,6 +57,10 @@ collect_sampa_data <- function(config = read_sampa_config(), snapshot_date = as.
   }
   ensure_project_dirs(config)
   snapshot_dir <- file.path(config$data_dir, "raw", snapshot_date)
+  if (!grepl("^[0-9TZ-]+$", snapshot_date)) stop("Identificador de snapshot invalido.")
+  if (file.exists(file.path(snapshot_dir, "manifest.json"))) {
+    stop("Snapshot finalizado e imutavel. Use um novo identificador.")
+  }
   dir.create(snapshot_dir, recursive = TRUE, showWarnings = FALSE)
 
   catalog_path <- file.path(snapshot_dir, "data_reports.json")
@@ -68,7 +72,7 @@ collect_sampa_data <- function(config = read_sampa_config(), snapshot_date = as.
     dataset = "catalog", format = "json", url = config$catalog_url,
     path = catalog_download$path, status = catalog_download$status,
     sha256 = catalog_download$sha256, bytes = catalog_download$bytes,
-    extracted_at = utc_now(), headers = jsonlite::toJSON(catalog_download$headers, auto_unbox = TRUE)
+    extracted_at = utc_now(), headers = as.character(jsonlite::toJSON(catalog_download$headers, auto_unbox = TRUE))
   ))
 
   delay <- 1 / max(as.numeric(config$collection$requests_per_second %||% 1), 0.01)
@@ -80,12 +84,22 @@ collect_sampa_data <- function(config = read_sampa_config(), snapshot_date = as.
       Sys.sleep(delay)
       idx <- idx + 1L
       extension <- paste0(".", fmt)
-      filename <- paste0(slugify(report$name), extension)
+      filename <- basename(sub("[?].*$", "", url))
+      if (!endsWith(filename, extension)) stop("Extensao inesperada no catalogo: ", url)
+      message("Baixando ", filename)
       result <- download_versioned_file(url, file.path(snapshot_dir, filename), config)
+      count <- if (fmt == "json") {
+        body <- jsonlite::fromJSON(result$path, simplifyVector = FALSE)
+        if (!is.list(body$partners)) stop("JSON sem partners: ", url)
+        length(body$partners)
+      } else {
+        nrow(readr::read_delim(result$path, delim = ";", show_col_types = FALSE,
+          col_types = readr::cols(.default = readr::col_character()), progress = FALSE))
+      }
       rows[[idx]] <- list(
         dataset = report$name, format = fmt, url = url, path = result$path,
-        status = result$status, sha256 = result$sha256, bytes = result$bytes,
-        extracted_at = utc_now(), headers = jsonlite::toJSON(result$headers, auto_unbox = TRUE)
+        status = result$status, sha256 = result$sha256, bytes = result$bytes, records = count,
+        extracted_at = utc_now(), headers = as.character(jsonlite::toJSON(result$headers, auto_unbox = TRUE))
       )
     }
   }
@@ -96,12 +110,12 @@ collect_sampa_data <- function(config = read_sampa_config(), snapshot_date = as.
     result <- download_versioned_file(config$terms_url, file.path(snapshot_dir, "termos.html"), config)
     rows[[idx]] <- list(dataset = "terms", format = "html", url = config$terms_url,
       path = result$path, status = result$status, sha256 = result$sha256, bytes = result$bytes,
-      extracted_at = utc_now(), headers = jsonlite::toJSON(result$headers, auto_unbox = TRUE))
+      extracted_at = utc_now(), headers = as.character(jsonlite::toJSON(result$headers, auto_unbox = TRUE)))
   }
 
   manifest <- dplyr::bind_rows(rows)
   readr::write_csv(manifest, file.path(snapshot_dir, "manifest.csv"))
-  atomic_write_json(list(snapshot_date = snapshot_date, package_version = "0.1.0",
+  atomic_write_json(list(snapshot_date = snapshot_date, package_version = "0.2.0",
     source_credit = "Sampa+Rural e parceiros", files = rows), file.path(snapshot_dir, "manifest.json"))
   invisible(manifest)
 }

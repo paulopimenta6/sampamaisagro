@@ -1,5 +1,3 @@
-if (!requireNamespace("sampamaisrural", quietly = TRUE)) {
-  if (!requireNamespace("pkgload", quietly = TRUE)) stop("Instale o pacote ou pkgload.")
-  pkgload::load_all(".")
-}
-sampamaisrural::run_app()
+if (!requireNamespace("pkgload", quietly = TRUE)) stop("Instale pkgload para executar o projeto fonte.")
+pkgload::load_all(".", quiet = TRUE)
+sampamaisrural::create_app()

@@ -17,3 +17,7 @@
 ^scripts$
 ^renv$
 ^renv\.lock$
+^docs$
+^\.gitignore$
+^\.Rprofile$
+^tests/e2e/__pycache__$

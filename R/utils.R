@@ -106,8 +106,10 @@ as_number <- function(x) {
 }
 
 normalize_cep <- function(x) {
-  y <- gsub("[^0-9]", "", as.character(x %||% ""))
-  ifelse(nchar(y) == 8L, y, NA_character_)
+  if (!length(x)) return(character())
+  raw <- trimws(as.character(x %||% ""))
+  y <- gsub("-", "", raw, fixed = TRUE)
+  ifelse(!is.na(raw) & grepl("^([0-9]{8}|[0-9]{5}-[0-9]{3})$", raw), y, NA_character_)
 }
 
 empty_chr <- function(n) rep(NA_character_, n)
