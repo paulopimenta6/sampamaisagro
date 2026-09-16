@@ -13,7 +13,8 @@ calculate_proximity(
   radius_m = NULL,
   modes = c("foot", "bicycle", "motorcar"),
   directions = "origin_to_equipment",
-  config = read_sampa_config()
+  config = read_sampa_config(),
+  progress_callback = NULL
 )
 }
 \arguments{
@@ -34,6 +35,8 @@ calculate_proximity(
 \item{directions}{Network directions: origin-to-equipment, reverse, or both.}
 
 \item{config}{Project configuration.}
+
+\item{progress_callback}{Optional function receiving a routing stage description.}
 }
 \value{
 Long-form proximity result with one row per origin, equipment and metric.

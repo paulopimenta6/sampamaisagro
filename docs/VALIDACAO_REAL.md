@@ -157,3 +157,61 @@ A implementação e os testes acima estão concluídos localmente. As alteraçõ
 preexistentes em `renv/activate.R` foram preservadas. Não foi feito novo commit
 ou push nesta retomada. Os arquivos históricos de demonstração não substituem
 as evidências reais identificadas nesta ficha.
+
+## 7. Correção da espera nas consultas — 16/09/2026
+
+O fluxo anterior calculava os trajetos no próprio processo da interface, com a
+barra de progresso fixa. Os resultados só eram publicados depois de todos os
+modos. O teste sem rede funcionava, mas a rede podia bloquear a tela por minutos.
+
+Agora um processo R local supervisionado calcula as partes; a interface recebe
+primeiro a geometria e depois cada combinação de origem e modo. Há cancelamento,
+fila entre sessões da mesma instância, limite de 900 segundos por etapa e
+identificação de resultados incompletos. O mapa mantém as camadas locais e
+atualiza pontos/zoom sem reenviar toda a malha de vias.
+
+Verificações concluídas nesta revisão:
+
+| Verificação | Evidência |
+|---|---|
+| Pacote R atualizado | `R CMD check`: `Status: OK`; 127 verificações, zero falhas/avisos/testes pulados |
+| Equivalência dos cálculos | Resultados progressivos iguais à API síncrona, incluindo ranking, raio, k por linha, sentidos e diagnósticos |
+| Ciclo de execução | Fila, cancelamento real do processo, processo encerrado inesperadamente, limite por etapa, rede ausente, filtros vazios e geocodificação estritamente offline |
+| CEP 05586-001, coordenadas e lote sem rede | Navegador aprovado tanto com código-fonte quanto com pacote instalado; mapas, estatísticas, CSV, HTML e ZIP |
+| Mapa ao alternar abas | Zoom verificado automaticamente no pacote instalado, inclusive após lote |
+| Progresso e cancelamento, repetição no pacote instalado | Aprovados: geometria em 7,9 s, cancelamento em 0,8 s, mapa/estatísticas navegáveis e HTML identificado como parcial |
+| Consulta individual, todos os modos e ida/volta | 11 métricas; 329 combinações selecionadas; CSV marcado `completed`, 4/4 unidades, CEP preservado |
+| Lote com rede de carro, execução independente | Aprovado: duas origens válidas, uma com erro, sete métricas por origem; geometria em 10,4 s e conclusão em 215,9 s; ZIP e manifesto completo conferidos |
+
+A consulta individual completa usou k = 10 e raio = 1 km e levou **646,8 s**,
+incluindo leitura das três redes. A geometria da primeira consulta com caminhada
+apareceu em **10,4 s**; o cancelamento respondeu em **0,8 s** e o HTML exportado
+trouxe o aviso de resultados parciais. Não são benchmarks controlados: havia
+checagens concorrentes. O custo total da rede continua alto; a correção permite
+usar a interface e os resultados prontos enquanto o cálculo prossegue.
+
+A primeira execução combinada do teste foi encerrada com sinal externo
+(código 143) **durante o lote**, depois de aprovar e exportar a consulta individual.
+Por isso, ela não constitui aprovação da execução combinada inteira. O CSV
+individual foi conferido separadamente: 11 métricas, ambos os sentidos de rede,
+CEP `05586001` e situação `completed`. O teste foi dividido em etapas independentes
+para não perder evidências das partes já terminadas.
+O lote foi então repetido isoladamente e aprovado até o download e a conferência
+do ZIP, sem requisições externas nem erros de navegador. O cancelamento também
+foi repetido isoladamente no pacote instalado, já com a correção final do zoom.
+
+Evidências desta correção:
+
+- `outputs/test-artifacts/async-basic/browser-evidence.json`: fluxo sem rede no código-fonte.
+- `outputs/test-artifacts/async-installed/browser-evidence.json`: pacote instalado, incluindo regressão de zoom.
+- `outputs/test-artifacts/async-network/all-networks.csv`: consulta individual completa.
+- `outputs/test-artifacts/async-network/complete-map.png`: resultado com rede de caminhada.
+- `outputs/test-artifacts/async-network/batch-evidence.json`: lote com rede aprovado em execução independente.
+- `outputs/test-artifacts/async-network/network-batch.zip`: resultados, estatísticas, partições, erros e manifesto do lote concluído.
+- `outputs/test-artifacts/async-cancel-final/cancel-evidence.json`: repetição aprovada de progresso, navegação, zoom, cancelamento e relatório parcial; zero requisições externas e erros de navegador.
+- `tests/e2e/test_progressive.py`: etapas `single`, `batch` e `cancel`, escolhidas por `SAMPA_TEST_STAGE`.
+
+As métricas e a base local não foram substituídas por aproximações para acelerar
+o teste. As redes continuam avaliando todos os destinos elegíveis; nenhuma rota
+indisponível é convertida em distância zero. Resultados parciais não devem ser
+interpretados como cobertura completa dos modos solicitados.

@@ -56,6 +56,18 @@ Este relatorio descreve uma consulta de proximidade espacial. As distancias geom
 
 Data de geracao: `r format(Sys.time(), tz = 'UTC', usetz = TRUE)`.
 
+```{r completeness}
+analysis <- attr(results, "analysis")
+if (!is.null(analysis)) {
+  cat(if (analysis$status == "completed") "Consulta concluída." else
+    "**ATENÇÃO: RESULTADOS PARCIAIS. A consulta não foi concluída integralmente.**", "\n\n")
+  report_table(data.frame(
+    indicador = c("Situação", "Unidades concluídas/solicitadas", "Modos solicitados", "Última etapa"),
+    valor = c(analysis$status, paste(analysis$completed_units, analysis$total_units, sep = "/"),
+      paste(analysis$requested_modes, collapse = ", "), analysis$stage)))
+}
+```
+
 ```{r provenance}
 provenance <- data.frame(
   indicador = c("Origens", "Equipamentos distintos", "Metricas", "Snapshot"),
@@ -117,7 +129,7 @@ page_break()
 # Concordancia entre metricas
 
 ```{r agreement}
-agreement <- tryCatch(metric_agreement(results), error = function(e) data.frame(observacao = conditionMessage(e)))
+agreement <- tryCatch(proximity_agreement(results), error = function(e) data.frame(observacao = conditionMessage(e)))
 if (nrow(agreement) && "metric_a" %in% names(agreement)) {
   agreement$metric_a <- abbreviate_metric(agreement$metric_a)
   agreement$metric_b <- abbreviate_metric(agreement$metric_b)

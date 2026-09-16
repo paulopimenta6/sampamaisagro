@@ -13,6 +13,15 @@ app_ui <- function(config, available_modes = character()) {
     header = shiny::tags$head(
       shiny::tags$link(rel = "stylesheet", href = "sampamaisrural-assets/app.css"),
       shiny::tags$link(rel = "icon", href = "data:,"),
+      shiny::tags$script(shiny::HTML("Shiny.addCustomMessageHandler('queryBusy', function(x) {
+        ['run_query', 'submit_batch'].forEach(function(id) { document.getElementById(id).disabled = x.busy; });
+        ['cancel_query', 'cancel_batch'].forEach(function(id) { document.getElementById(id).disabled = !x.busy; });
+        ['download_results', 'download_report', 'download_batch'].forEach(function(id) {
+          var el = document.getElementById(id), enabled = id === 'download_batch' ? x.batch : x.download;
+          el.classList.toggle('disabled', !enabled); el.setAttribute('aria-disabled', !enabled);
+          el.style.pointerEvents = enabled ? '' : 'none'; el.tabIndex = enabled ? 0 : -1;
+        });
+      });")),
       shiny::tags$meta(name = "description", content = "Agricultura e alimenta\u00e7\u00e3o perto de voc\u00ea. An\u00e1lise offline com dados oficiais.")),
     bslib::nav_panel("Explorar", value = "explore",
       bslib::layout_sidebar(fillable = FALSE, sidebar = bslib::sidebar(width = 310,
@@ -40,6 +49,8 @@ app_ui <- function(config, available_modes = character()) {
         shiny::selectInput("query_direction", "Sentido dos trajetos",
           c("Ida: origem \u2192 equipamento" = "origin_to_equipment", "Volta" = "equipment_to_origin", "Ida e volta" = "both")),
         shiny::actionButton("run_query", "Encontrar equipamentos", class = "btn-primary w-100"),
+        shiny::actionButton("cancel_query", "Cancelar consulta", disabled = TRUE, class = "w-100"),
+        shiny::helpText("O mapa aparece por etapas. Downloads s\u00e3o liberados ao concluir ou cancelar; resultados incompletos s\u00e3o identificados."),
         shiny::hr(),
         shiny::downloadButton("download_results", "Resultados CSV"),
         shiny::downloadButton("download_report", "Relat\u00f3rio HTML")),
@@ -57,6 +68,7 @@ app_ui <- function(config, available_modes = character()) {
         shiny::downloadButton("download_template", "Baixar exemplo de lote"),
         shiny::fileInput("batch_file", "Arquivo", accept = c(".csv", ".tsv", ".xlsx", ".xls", ".parquet")),
         shiny::actionButton("submit_batch", "Analisar lote", class = "btn-primary"),
+        shiny::actionButton("cancel_batch", "Cancelar lote", disabled = TRUE),
         shiny::uiOutput("batch_message"),
         shiny::p("At\u00e9 100 origens por execu\u00e7\u00e3o na interface. Para lotes maiores use scripts/batch.R (parti\u00e7\u00f5es e retomada)."),
         DT::DTOutput("batch_errors"), shiny::downloadButton("download_batch", "Baixar pacote do lote (.zip)"))),
@@ -94,13 +106,16 @@ proximity_summary <- function(results) {
       maximo_m = max(distance_m), .groups = "drop")
 }
 
-app_server <- function(input, output, session, config, equipment, graphs, context) {
+proximity_agreement <- function(results) {
+  if (!nrow(results)) return(data.frame())
+  dplyr::bind_rows(lapply(split(results, results$origin_id), function(x) {
+    metric_agreement(x, k = x$selection_k[[1]] %||% 10L)
+  }))
+}
+
+app_server <- function(input, output, session, config, equipment, graphs, context, pool = new_web_pool()) {
   available_modes <- if (is.null(graphs)) config$network$modes[file.exists(file.path(config$data_dir,
     "processed", paste0("network_", config$network$modes, ".rds")))] else names(graphs)
-  query_graphs <- function(modes) {
-    if (!length(modes)) return(list())
-    if (is.null(graphs)) load_network_graphs(config, modes) else graphs[intersect(modes, names(graphs))]
-  }
   validated <- validate_equipment(classify_equipment(equipment), config)
   equipment <- validated$data
   result_state <- shiny::reactiveVal(data.frame())
@@ -111,6 +126,11 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
   batch_state <- shiny::reactiveVal(NULL)
   batch_message <- shiny::reactiveVal("")
   batch_errors <- shiny::reactiveVal(data.frame())
+  job_state <- shiny::reactiveVal(NULL)
+  current_job <- NULL
+  seen_parts <- -1L
+  seen_status <- NULL
+  query_equipment <- validated$eligible
   filters <- shiny::reactive(filter_equipment(equipment, input$categories, input$accessibility))
 
   output$data_notice <- shiny::renderUI(shiny::div(class = "alert alert-success", role = "status",
@@ -127,34 +147,85 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
     selected_equipment(validate_equipment(eq, config)$eligible)
     if (nrow(result)) {
       keys <- result[!duplicated(result$metric_id), c("metric_id", "metric_label")]
+      selected <- shiny::isolate(input$map_metric)
+      if (is.null(selected) || !selected %in% keys$metric_id) selected <- keys$metric_id[[1]]
       shiny::updateSelectInput(session, "map_metric",
-        choices = stats::setNames(keys$metric_id, keys$metric_label), selected = keys$metric_id[[1]])
+        choices = stats::setNames(keys$metric_id, keys$metric_label), selected = selected)
     } else shiny::updateSelectInput(session, "map_metric", choices = c("Vis\u00e3o geral da base" = "overview"))
     status_state(message)
     result_note(paste(message, "Resumos referem-se ao subconjunto retido (raio OU top-k), n\u00e3o \u00e0 cidade inteira."))
   }
 
+  busy <- function() {
+    if (is.null(current_job)) return(FALSE)
+    job <- pool$jobs[[current_job]]
+    !web_terminal(web_job_read(job$dir)$status) || (!is.null(job$process) && job$process$is_alive())
+  }
+  controls <- function() {
+    state <- job_state()
+    running <- !is.null(state) && !web_terminal(state$status)
+    session$sendCustomMessage("queryBusy", list(busy = running,
+      download = !running && nrow(result_state()) > 0L,
+      batch = !running && !is.null(state) && identical(state$kind, "batch")))
+  }
+  start_query <- function(origin, kind) {
+    if (busy()) return(invisible(NULL))
+    if (!is.null(current_job)) {
+      if (identical(pool$active, current_job)) pool$active <- NULL
+      pool$jobs[[current_job]] <- NULL
+    }
+    current_job <<- NULL
+    batch_errors(data.frame()); batch_state(NULL); batch_message(""); job_state(NULL)
+    query_equipment <<- filters()
+    install_result(data.frame(), data.frame(), query_equipment, "Preparando consulta local\u2026")
+    cfg <- config
+    cfg$proximity$default_k <- input$query_k
+    cfg$proximity$default_radius_m <- input$query_radius
+    current_job <<- web_submit(pool, origin, query_equipment, graphs, cfg,
+      input$query_modes %||% character(), input$query_direction, kind)
+    seen_parts <<- -1L; seen_status <<- NULL
+    job_state(web_job_read(pool$jobs[[current_job]]$dir))
+    controls()
+  }
   shiny::observeEvent(input$run_query, {
-    result_state(data.frame()); origin_state(data.frame())
     origin <- if (input$origin_method == "cep") data.frame(query_id = "consulta-1", cep = input$cep) else
       data.frame(query_id = "consulta-1", latitude = input$latitude, longitude = input$longitude)
     origin$k <- input$query_k; origin$radius_m <- input$query_radius
-    tryCatch(shiny::withProgress(message = "Analisando a base local", value = 0.2, {
-      resolved <- resolve_origins(origin, config)
-      if (!nrow(resolved$valid)) stop(paste(unique(resolved$errors$message), collapse = "; "))
-      eq <- filters()
-      result <- calculate_proximity(resolved$valid, eq, query_graphs(input$query_modes), k = input$query_k,
-        radius_m = input$query_radius, modes = input$query_modes, directions = input$query_direction, config = config)
-      origins <- resolved$valid
-      names(origins)[names(origins) == "query_id"] <- "origin_id"
-      note <- if (input$origin_method == "cep") sprintf(" CEP aproximado: %.6f, %.6f \u00b7 %s.",
-        origins$latitude[1], origins$longitude[1], origins$geocode_source[1]) else " Coordenadas fornecidas."
-      message <- if (nrow(result)) sprintf("Consulta conclu\u00edda: %d equipamentos distintos selecionados.%s",
-        length(unique(result$equipment_id)), note) else "Nenhum equipamento mape\u00e1vel para esses filtros. Amplie os tipos ou remova o filtro de acessibilidade."
-      install_result(result, origins, eq, message)
-    }), error = function(e) {
-      install_result(data.frame(), data.frame(), filters(), paste("Consulta n\u00e3o realizada:", conditionMessage(e)))
+    tryCatch(start_query(origin, "single"), error = function(e) {
+      status_state(paste("Consulta n\u00e3o realizada:", conditionMessage(e))); controls()
     })
+  })
+  shiny::observe({
+    shiny::invalidateLater(500, session)
+    shiny::isolate({
+      web_poll(pool)
+      if (!is.null(current_job)) {
+        job_dir <- pool$jobs[[current_job]]$dir
+        state <- web_job_read(job_dir)
+        job_state(state)
+        changed <- length(state$parts) != seen_parts || !identical(state$status, seen_status)
+        if (changed) {
+          result <- web_job_results(job_dir, state)
+          install_result(result, state$origins, query_equipment, web_job_message(state, result))
+          seen_parts <<- length(state$parts); seen_status <<- state$status
+        }
+        message <- web_job_message(state, result_state())
+        status_state(message)
+        result_note(paste(message, "Resumos do subconjunto retido (raio OU top-k), n\u00e3o da cidade inteira."))
+        if (state$kind == "batch") {
+          batch_errors(state$errors); batch_message(message)
+          if (web_terminal(state$status)) batch_state(list(output_dir = job_dir, state = state))
+        }
+      }
+      controls()
+    })
+  })
+  cancel <- function() if (!is.null(current_job)) web_stop(pool, current_job)
+  shiny::observeEvent(input$cancel_query, cancel())
+  shiny::observeEvent(input$cancel_batch, cancel())
+  session$onSessionEnded(function() {
+    cancel()
+    if (!is.null(current_job)) pool$jobs[[current_job]] <- NULL
   })
 
   output$query_kpis <- shiny::renderUI({
@@ -167,11 +238,18 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
       shiny::div(class = "kpi", shiny::strong(sum(shown$within_radius)), shiny::span("pares origem/equipamento no raio")),
       shiny::div(class = "kpi", shiny::strong(sprintf("%.0f m", min(shown$distance_m))), shiny::span("menor dist\u00e2ncia")))
   })
-  output$proximity_map <- leaflet::renderLeaflet({
-    make_leaflet_map(result_state(), origin_state(), input$map_metric,
-      equipment = selected_equipment(), context = context,
-      radius_m = if (nrow(origin_state()) == 1L) origin_state()$radius_m else NULL)
-  })
+  output$proximity_map <- leaflet::renderLeaflet(make_leaflet_map(data.frame(),
+    equipment = validated$eligible, context = context))
+  shiny::observeEvent(list(result_state(), origin_state(), input$map_metric, input$main_nav), {
+    # fitBounds on a hidden tab uses a zero-sized container and zooms out too
+    # far. Defer layers/bounds until Explorar is visible, then use latest state.
+    if (!identical(input$main_nav, "explore")) return()
+    map <- leaflet::leafletProxy("proximity_map", session) |>
+      leaflet::clearGroup("Equipamentos") |> leaflet::clearGroup("Origens") |>
+      leaflet::clearGroup("Raio geod\u00e9sico (refer\u00eancia)") |> leaflet::removeControl("equipment-legend")
+    add_query_layers(map, result_state(), origin_state(), input$map_metric,
+      selected_equipment(), if (nrow(origin_state()) == 1L) origin_state()$radius_m else NULL)
+  }, ignoreInit = TRUE)
   output$proximity_table <- DT::renderDT({
     result <- result_state()
     if (!nrow(result)) return(DT::datatable(data.frame(Aviso = "Os equipamentos aparecer\u00e3o aqui ap\u00f3s uma consulta v\u00e1lida."), rownames = FALSE))
@@ -188,11 +266,14 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
   })
   output$download_results <- shiny::downloadHandler(
     filename = function() paste0("proximidade-", Sys.Date(), ".csv"),
-    content = function(file) { shiny::req(nrow(result_state()) > 0); readr::write_csv(result_state(), file, na = "") })
+    content = function(file) {
+      shiny::req(nrow(result_state()) > 0, !busy())
+      readr::write_csv(web_export_results(result_state(), job_state()), file, na = "")
+    })
   output$download_report <- shiny::downloadHandler(
     filename = function() paste0("relatorio-", Sys.Date(), ".html"),
     content = function(file) {
-      shiny::req(nrow(result_state()) > 0)
+      shiny::req(nrow(result_state()) > 0, !busy())
       render_proximity_report(result_state(), file, origin_state(), selected_equipment(), config)
     })
   output$statistics_notice <- shiny::renderUI(shiny::p(class = "query-status", result_note()))
@@ -214,7 +295,7 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
   output$summary_table <- DT::renderDT(DT::datatable(proximity_summary(result_state()),
     rownames = FALSE, options = list(scrollX = TRUE)))
   output$agreement_table <- DT::renderDT({
-    x <- if (nrow(result_state())) metric_agreement(result_state(), input$query_k) else data.frame()
+    x <- proximity_agreement(result_state())
     DT::datatable(x, rownames = FALSE, options = list(scrollX = TRUE, pageLength = 10))
   })
   output$quality_table <- DT::renderDT(DT::datatable(validated$summary, rownames = FALSE))
@@ -244,44 +325,21 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
       cep = c("05586001", NA), latitude = c(NA, -23.55008), longitude = c(NA, -46.63408)), file, na = ""))
   shiny::observeEvent(input$submit_batch, {
     shiny::req(input$batch_file)
-    batch_errors(data.frame()); batch_state(NULL)
-    result_state(data.frame()); origin_state(data.frame())
-    tryCatch(shiny::withProgress(message = "Analisando lote local", value = 0.1, {
-      job_dir <- file.path(config$jobs_dir, new_job_id())
-      dir.create(job_dir, recursive = TRUE)
-      path <- file.path(job_dir, paste0("input.", tolower(tools::file_ext(input$batch_file$name))))
+    if (busy()) return()
+    tryCatch({
+      path <- tempfile(fileext = paste0(".", tolower(tools::file_ext(input$batch_file$name))))
+      on.exit(unlink(path), add = TRUE)
       if (!file.copy(input$batch_file$datapath, path)) stop("N\u00e3o foi poss\u00edvel guardar o arquivo.")
-      raw <- read_origin_file(path)
-      if (!nrow(raw)) stop("O arquivo n\u00e3o cont\u00e9m origens.")
-      if (nrow(raw) > 100) stop("Na interface, envie at\u00e9 100 origens. Use scripts/batch.R para lotes maiores.")
-      eq <- filters()
-      batch_cfg <- config
-      batch_cfg$proximity$default_k <- input$query_k
-      batch_cfg$proximity$default_radius_m <- input$query_radius
-      batch_cfg$batch$chunk_size <- 10L
-      outcome <- process_batch(raw, job_dir, eq, query_graphs(input$query_modes), batch_cfg,
-        parameters = list(modes = input$query_modes, directions = input$query_direction),
-        progress_callback = function(done, total, message) shiny::setProgress(value = done / total, detail = message))
-      parts <- list.files(outcome$summary$partition_dir, pattern = "\\.parquet$", full.names = TRUE)
-      result <- dplyr::bind_rows(lapply(parts, function(p) as.data.frame(arrow::read_parquet(p))))
-      origins <- if (nrow(result)) unique(data.frame(origin_id = result$origin_id,
-        longitude = result$origin_longitude, latitude = result$origin_latitude)) else data.frame()
-      note <- sprintf("Lote conclu\u00eddo: %d origens v\u00e1lidas; %d com erro. Veja mapa e tabelas em Explorar e Estat\u00edsticas.",
-        outcome$summary$valid_rows, outcome$summary$error_rows)
-      readr::write_csv(result, file.path(job_dir, "results.csv"), na = "")
-      readr::write_csv(proximity_summary(result), file.path(job_dir, "statistics.csv"), na = "")
-      batch_state(outcome); batch_errors(outcome$errors); batch_message(note)
-      install_result(result, origins, eq, note)
-    }), error = function(e) batch_message(paste("Lote n\u00e3o realizado:", conditionMessage(e))))
+      start_query(path, "batch")
+    }, error = function(e) { batch_message(paste("Lote n\u00e3o realizado:", conditionMessage(e))); controls() })
   })
   output$batch_message <- shiny::renderUI(shiny::p(class = "query-status", batch_message()))
   output$batch_errors <- DT::renderDT(DT::datatable(batch_errors(), rownames = FALSE))
   output$download_batch <- shiny::downloadHandler(filename = function() "lote-sampamaisagro.zip",
     content = function(file) {
-      outcome <- batch_state(); shiny::req(!is.null(outcome))
-      paths <- list.files(outcome$output_dir, recursive = TRUE)
-      paths <- paths[!grepl("^(input\\.|checkpoint\\.rds$|run_identity\\.rds$)", paths)]
-      zip::zipr(file, files = paths, root = outcome$output_dir, include_directories = FALSE)
+      outcome <- batch_state(); shiny::req(!is.null(outcome), !busy())
+      export <- web_batch_bundle(outcome$output_dir, outcome$state)
+      zip::zipr(file, files = list.files(export), root = export, include_directories = FALSE)
     })
 }
 
@@ -300,8 +358,9 @@ create_app <- function(config = read_sampa_config(), equipment = NULL, graphs = 
   www <- system.file("app", "www", package = "sampamaisrural")
   shiny::addResourcePath("sampamaisrural-assets", www)
   context <- load_map_context(config)
+  pool <- new_web_pool()
   shiny::shinyApp(app_ui(config, available_modes), function(input, output, session) {
-    app_server(input, output, session, config, equipment, graphs, context)
+    app_server(input, output, session, config, equipment, graphs, context, pool)
   })
 }
 

@@ -1,12 +1,13 @@
 """Real-data browser regression. Start via with_server.py; all external requests are denied."""
 import csv
 import json
+import os
 from pathlib import Path
 from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright
 
-BASE_URL = "http://127.0.0.1:3939"
-ARTIFACTS = Path("outputs/test-artifacts")
+BASE_URL = os.environ.get("SAMPA_TEST_URL", "http://127.0.0.1:3939")
+ARTIFACTS = Path(os.environ.get("SAMPA_TEST_ARTIFACTS", "outputs/test-artifacts"))
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
 with sync_playwright() as p:
@@ -75,6 +76,7 @@ with sync_playwright() as p:
     page.locator("#run_query").click()
     page.wait_for_function("document.querySelector('#query_status').innerText.includes('Coordenadas fornecidas')", timeout=90000)
     page.wait_for_function("document.querySelector('#proximity_table tbody').innerText.includes('consulta-1')", timeout=60000)
+    page.wait_for_function("HTMLWidgets.find('#proximity_map').getMap().getZoom() >= 12", timeout=15000)
 
     page.get_by_role("tab", name="Lotes", exact=True).click()
     page.locator("#batch_file").set_input_files("inst/examples/origens-reais.csv")
@@ -89,6 +91,7 @@ with sync_playwright() as p:
     pending.value.save_as(ARTIFACTS / "real-batch.zip")
     page.get_by_role("tab", name="Explorar", exact=True).click()
     page.wait_for_function("document.querySelector('#proximity_table').innerText.includes('teste-iquiririm')", timeout=60000)
+    page.wait_for_function("HTMLWidgets.find('#proximity_map').getMap().getZoom() >= 11", timeout=15000)
     page.screenshot(path=str(ARTIFACTS / "real-batch-map.png"), full_page=True)
     assert not page.locator(".shiny-output-error").count()
     evidence = {"single_status": single_status, "batch_status": batch_status,

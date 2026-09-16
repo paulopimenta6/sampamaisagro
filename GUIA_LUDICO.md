@@ -164,6 +164,44 @@ Manhattan e Chebyshev **não desenham ruas**. Para caminhos de rua, selecione a 
 
 O tempo é modelado, sem trânsito ao vivo. Ida e volta podem diferir por causa de sentidos das vias. O mapa mostra os equipamentos e a origem, não o traçado das rotas.
 
+### Pedi caminhos e parece que está demorando… 🍲
+
+Pense numa refeição servida em etapas: você não precisa esperar todos os pratos
+para começar!
+
+1. Clique em **Encontrar equipamentos** (ou **Analisar lote**).
+2. Primeiro chegam as cinco “réguas” geométricas: já dá para ver mapa, tabela e estatísticas.
+3. Enquanto você explora, outro processo R calcula os caminhos. Os resultados de rua são acrescentados por modo e por origem.
+
+A mensagem mostra o que está sendo feito e há quanto tempo. “1/4 unidades” pode
+significar que a geometria ficou pronta e faltam caminhada, bicicleta e carro.
+**Isso não quer dizer que falta só três vezes o mesmo tempo!** Caminhos de rua
+são muito mais trabalhosos e podem levar vários minutos.
+
+Você pode trocar a régua exibida e visitar **Estatísticas** sem esperar acabar.
+Enquanto faltar alguma parte, a tela avisa **Resultados parciais**. Se outra
+pessoa estiver consultando a mesma aplicação, aparece uma fila: cada consulta
+tem sua vez, para não sobrecarregar o computador.
+
+Quer parar? Use **Cancelar consulta** ou **Cancelar lote**. O cálculo para de
+verdade e o que já ficou pronto continua disponível. Downloads são liberados
+quando a execução termina, é cancelada ou falha; arquivos incompletos levam
+um aviso. **Uma análise cancelada não prova que não existem equipamentos próximos.**
+
+Mudar o CEP, filtros ou modos durante a execução não muda o pedido já enviado.
+Espere terminar ou cancele e faça uma nova consulta. Fechar ou recarregar a página
+também cancela o trabalho daquela sessão: ele não continua “escondido”.
+
+Se uma etapa ultrapassar 15 minutos sem avançar, aparece um erro em vez de
+uma espera sem fim. O README explica como aumentar esse limite em computadores
+mais lentos e onde consultar os registros técnicos. As pastas `jobs/web-job-.../`
+guardam esses registros e partes prontas no computador que roda R; podem conter
+seus CEPs/coordenadas e não devem ser publicadas.
+
+Após atualizar o código, feche e abra novamente a aplicação e recarregue a página
+para usar essa melhoria. Sua despensa `data/` continua a mesma: não é preciso
+baixar tudo de novo.
+
 ## 7. E acessibilidade? ♿
 
 O filtro separa:
@@ -201,7 +239,7 @@ praca-estudo,,-23.55008,-46.63408,5,1000
 
 Clique em **Analisar lote**. As linhas com problema aparecem na tabela de erros; as válidas continuam.
 
-Depois, visite **Explorar** e **Estatísticas** para os resultados combinados. O ZIP contém CSV, partições Parquet, estatísticas, manifesto e erros. A interface aceita até 100 origens por execução; para volumes maiores, use o comando de lotes descrito no README.
+Durante a execução, visite **Explorar** e **Estatísticas** para acompanhar os resultados combinados. Você também pode usar **Cancelar lote**. Quando a execução termina, o ZIP contém CSV, partições Parquet, estatísticas, manifesto e erros. O manifesto diz se o cálculo ficou completo ou parcial. A interface aceita até 100 origens por execução; para volumes maiores e retomada, use o comando de lotes descrito no README.
 
 Não publique lotes com endereços pessoais identificáveis.
 
@@ -332,6 +370,9 @@ Os relatórios são um ponto de partida para sua pesquisa, não um texto pronto 
 | Muitos pontos de uma categoria | O cadastro e os grupos podem se sobrepor; não são um censo |
 | Rede não aparece | Prepare os grafos e reinicie a aplicação |
 | Caminho indisponível | Pode haver desconexão, recorte da rede ou ponto longe das vias |
+| Caminhos demorando | Veja a etapa e explore os resultados parciais; use Cancelar se quiser parar |
+| Na fila local | Outra consulta está usando o processo de cálculo; aguarde ou cancele a espera |
+| Etapa excedeu o tempo | As partes prontas permanecem; tente menos modos ou ajuste o limite conforme o README |
 | Mapa sem fotos de ruas | É intencional: o fundo usa vetores locais, sem tiles externos |
 | RStudio abre comportamento antigo | Execute app.R da pasta atual; reinicie R e carregue o projeto |
 | Lote perde o zero do CEP | Salve a coluna como texto; um CEP de sete dígitos é rejeitado |

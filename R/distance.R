@@ -136,11 +136,13 @@ route_one_direction <- function(graph, origin, equipment, mode, objective, direc
   rank_distance_rows(out, k, radius_m)
 }
 
-network_rows <- function(origin, equipment, graphs, modes, directions, k, radius_m, config) {
+network_rows <- function(origin, equipment, graphs, modes, directions, k, radius_m, config,
+                         progress_callback = NULL) {
   speeds <- c(foot = 3.6, bicycle = 12, motorcar = 30)
   rows <- list()
   cursor <- 0L
   for (mode in intersect(modes, names(graphs))) {
+    if (is.function(progress_callback)) progress_callback(paste(mode, "associando pontos \u00e0s vias"))
     graph <- graphs[[mode]]
     if (is.null(graph) || !nrow(graph)) next
     vertices <- dodgr::dodgr_vertices(graph)
@@ -149,6 +151,7 @@ network_rows <- function(origin, equipment, graphs, modes, directions, k, radius
       equipment = match_graph_points(graph, equipment[, c("longitude", "latitude")], vertices))
     for (objective in c("shortest", "fastest")) {
       for (direction in directions) {
+        if (is.function(progress_callback)) progress_callback(paste(mode, objective, direction))
         cursor <- cursor + 1L
         rows[[cursor]] <- route_one_direction(
           graph, origin, equipment, mode, objective, direction, k, radius_m,
@@ -172,13 +175,14 @@ network_rows <- function(origin, equipment, graphs, modes, directions, k, radius
 #' @param modes Requested network modes.
 #' @param directions Network directions: origin-to-equipment, reverse, or both.
 #' @param config Project configuration.
+#' @param progress_callback Optional function receiving a routing stage description.
 #' @return Long-form proximity result with one row per origin, equipment and metric.
 #' @export
 calculate_proximity <- function(origins, equipment, graphs = list(), categories = NULL,
                                 k = NULL, radius_m = NULL,
                                 modes = c("foot", "bicycle", "motorcar"),
                                 directions = "origin_to_equipment",
-                                config = read_sampa_config()) {
+                                config = read_sampa_config(), progress_callback = NULL) {
   # Resolved CEPs legitimately carry both provenance (CEP) and coordinates.
   # Validate the coordinate representation, keeping the original metadata.
   origins <- as.data.frame(origins)
@@ -216,7 +220,8 @@ calculate_proximity <- function(origins, equipment, graphs = list(), categories 
 
     # Evaluate every eligible destination: fastest-path rankings cannot be
     # bounded safely by a geodesic top-k candidate envelope.
-    routed <- network_rows(origin, equipment, graphs, modes, directions, k, radius_m, config)
+    routed <- network_rows(origin, equipment, graphs, modes, directions, k, radius_m, config,
+      progress_callback)
 
     rows <- dplyr::bind_rows(geometric, routed)
     rows$selection_k <- k

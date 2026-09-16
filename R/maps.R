@@ -25,6 +25,17 @@ make_leaflet_map <- function(results, origins = NULL, metric_id = NULL,
   if (!is.null(context$roads_geojson)) map <- leaflet::addGeoJSON(map,
     geojson = context$roads_geojson, color = "#b5c2b7", weight = 1, opacity = 0.8, group = "Vias OSM",
     options = leaflet::pathOptions(interactive = FALSE))
+  map <- add_query_layers(map, results, origins, metric_id, equipment, radius_m)
+  map <- leaflet::addLayersControl(map,
+    overlayGroups = c("Equipamentos", "Origens", "Raio geod\u00e9sico (refer\u00eancia)", "Vias OSM", "Limite municipal"),
+    options = leaflet::layersControlOptions(collapsed = TRUE))
+  leaflet::addControl(map, html = paste(
+    "Mapa offline \u00b7 pontos, n\u00e3o tra\u00e7ados de rotas.<br>",
+    "Fontes: Prefeitura/Sampa+Rural \u00b7 IBGE \u00b7 \u00a9 OpenStreetMap contributors (ODbL)."),
+    position = "topleft")
+}
+
+add_query_layers <- function(map, results, origins, metric_id, equipment, radius_m) {
   query <- nrow(results) > 0
   if (query) {
     metric_id <- metric_id %||% unique(results$metric_id)[1]
@@ -46,12 +57,12 @@ make_leaflet_map <- function(results, origins = NULL, metric_id = NULL,
     map <- leaflet::addCircleMarkers(map, lng = shown$longitude, lat = shown$latitude,
       radius = if (query) 6 else 4, color = pal(group), stroke = TRUE, weight = 1,
       fillOpacity = 0.85, popup = popup, label = shown$equipment_name, group = "Equipamentos") |>
-      leaflet::addLegend("bottomright", pal = pal, values = group, title = "Equipamentos")
+      leaflet::addLegend("bottomright", pal = pal, values = group, title = "Equipamentos", layerId = "equipment-legend")
     coords <- shown[, c("longitude", "latitude"), drop = FALSE]
     if (!is.null(origins) && nrow(origins)) coords <- rbind(coords, origins[, names(coords), drop = FALSE])
     bounds <- c(range(coords$longitude), range(coords$latitude))
     if (diff(bounds[1:2]) > 0 && diff(bounds[3:4]) > 0) map <- leaflet::fitBounds(map,
-      bounds[1], bounds[3], bounds[2], bounds[4])
+      bounds[1], bounds[3], bounds[2], bounds[4], options = list(animate = FALSE))
   }
   if (!is.null(origins) && nrow(origins)) {
     labels <- origins$origin_id %||% origins$query_id
@@ -62,13 +73,7 @@ make_leaflet_map <- function(results, origins = NULL, metric_id = NULL,
       radius = 9, color = "#172f57", fillColor = "#ffffff", fillOpacity = 1, weight = 4,
       label = paste("Origem:", labels), group = "Origens")
   }
-  map <- leaflet::addLayersControl(map,
-    overlayGroups = c("Equipamentos", "Origens", "Raio geod\u00e9sico (refer\u00eancia)", "Vias OSM", "Limite municipal"),
-    options = leaflet::layersControlOptions(collapsed = TRUE))
-  leaflet::addControl(map, html = paste(
-    "Mapa offline \u00b7 pontos, n\u00e3o tra\u00e7ados de rotas.<br>",
-    "Fontes: Prefeitura/Sampa+Rural \u00b7 IBGE \u00b7 \u00a9 OpenStreetMap contributors (ODbL)."),
-    position = "topleft")
+  map
 }
 
 make_static_map <- function(results, metric_id = NULL, context = list()) {

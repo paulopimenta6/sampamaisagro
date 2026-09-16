@@ -212,13 +212,62 @@ A rede é uma análise mais pesada: a consulta a pé no navegador levou cerca de
 e condições na [ficha de validação](docs/VALIDACAO_REAL.md). Comece pelas métricas
 geométricas e acrescente apenas os modos de transporte necessários.
 
+### A consulta está demorando?
+
+A interface mostra resultados **por etapas**, tanto para um CEP/coordenada quanto
+para um lote. Primeiro aparecem as cinco métricas geométricas, o mapa e as
+estatísticas; depois são acrescentados os trajetos de cada modo, por origem.
+A mensagem informa a etapa, o tempo decorrido e as unidades concluídas
+(uma unidade = uma origem × geometria ou modo). Esse contador **não é uma
+estimativa do tempo restante**: carregar uma rede e calcular rotas custa muito
+mais que medir distâncias geométricas.
+
+O cálculo roda em um processo R local separado, iniciado automaticamente com
+[callr](https://callr.r-lib.org/reference/r_bg.html). A tela permanece disponível
+para navegar, trocar a métrica e usar **Cancelar consulta** ou **Cancelar lote**.
+Uma execução por instância da aplicação e uma rede por vez reduzem a competição
+por memória; outras sessões aguardam na fila local. Não é preciso iniciar
+`scripts/worker.R`. Os parâmetros e filtros são fixados no clique: edições
+posteriores só valem para a próxima consulta.
+
+Os resultados em andamento são identificados como **parciais**. Downloads ficam
+disponíveis ao concluir, cancelar ou falhar. O CSV registra `analysis_status`,
+`analysis_job_id`, `requested_modes`, `completed_units` e `total_units`; o relatório
+HTML/PDF avisa se a análise está incompleta. O ZIP do lote inclui um manifesto
+com `complete`, situação, modos e contagens, além das partições já concluídas e
+dos erros por linha. Não interprete um cancelamento como ausência de equipamentos.
+
+**Cancelar** encerra o processo da consulta e preserva os resultados já concluídos.
+Fechar/recarregar a página também encerra a consulta daquela sessão; a interface
+não retoma esse trabalho automaticamente. Para lotes retomáveis, use a API/CLI.
+Arquivos de execução e logs ficam em `jobs/web-job-.../` no computador que executa
+R. São locais, ignorados pelo Git e podem conter CEPs/coordenadas de consulta;
+proteja-os. Não são apagados automaticamente pela limpeza da fila SQLite.
+
+Se uma etapa ficar mais de 900 segundos sem avançar, o processo é encerrado com
+uma mensagem de erro, preservando as partes prontas. Em uma máquina mais lenta,
+ajuste esse limite em `config.yml` e reinicie a aplicação:
+
+~~~yaml
+default:
+  web:
+    stage_timeout_seconds: 1800
+~~~
+
+Adicione `web` ao bloco `default` existente; não substitua as demais configurações.
+O limite é por etapa, não pelo tempo total do lote. Se falhar antes dos primeiros
+resultados, confira a mensagem e `worker-errors.log` na pasta daquela execução.
+Não é necessário baixar novamente a base para aplicar esta correção: reinicie
+o processo R/Shiny e recarregue o navegador; se usa o pacote instalado, reinstale
+o pacote atualizado antes de iniciar.
+
 Cada resultado retém os **k primeiros OU os pontos dentro do raio**, por origem/métrica/sentido. O raio é sempre em metros, inclusive para trajetos classificados por tempo. O ranking “menor tempo” é ordenado por minutos.
 
 Resultados de rede incluem conectores estimados até os vértices; alertas acima de 250 m e exclusão acima de 1.000 m. Sem trânsito real, restrições completas de conversão ou auditoria de calçadas. O mapa mostra os pontos, **não o desenho dos trajetos**.
 
 ## Lotes e relatórios
 
-Na aba Lotes, envie até 100 origens. A análise acontece na própria interface, sem depender de iniciar um worker. Mapa, tabelas e estatísticas aparecem nas mesmas abas da consulta única. Há download ZIP e erros por linha.
+Na aba Lotes, envie até 100 origens. A análise é iniciada pela interface e executada em segundo plano, sem precisar iniciar um worker manualmente. Mapa, tabelas e estatísticas aparecem progressivamente nas mesmas abas da consulta única. Há cancelamento, download ZIP e erros por linha.
 
 Exemplo: [origens-reais.csv](inst/examples/origens-reais.csv). A terceira linha tem um CEP não preparado para demonstrar o tratamento de erros.
 
@@ -262,6 +311,17 @@ R_PROFILE_USER=/dev/null Rscript scripts/validate_real_data.R
 
 `evidence.json` só indica `passed: true` após a consolidação completa. O teste lento
 `tests/e2e/test_network.py` também exercita a consulta a pé pela interface.
+
+`tests/e2e/test_progressive.py` testa os três modos locais, ida e volta,
+resultados parciais, navegação durante o cálculo, cancelamento, fila entre sessões
+e lote com rede. É um teste demorado, executado com Playwright e com requisições
+externas do navegador bloqueadas. `SAMPA_TEST_URL` permite escolher uma porta
+isolada; `SAMPA_TEST_ARTIFACTS` muda a pasta de evidências.
+Execute as etapas separadamente: `SAMPA_TEST_STAGE=single` (padrão, três modos),
+`SAMPA_TEST_STAGE=batch` (lote com carro) e `SAMPA_TEST_STAGE=cancel`
+(verificação curta de progresso, navegação e cancelamento). Cada etapa grava
+seu próprio `*-evidence.json` somente após passar pelas respectivas verificações.
+
 Se já houver vias preparadas, os grafos podem ser reconstruídos separadamente,
 sem baixar novamente o OSM: `Rscript scripts/rebuild_graphs.R bicycle` (ou `motorcar`/`foot`).
 

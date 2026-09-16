@@ -22,6 +22,8 @@ spatial:
   snap_max_m: 1000
 proximity: {default_k: 10, default_radius_m: 5000, initial_candidates: 50}
 batch: {chunk_size: 500, web_max_rows: 100000, retention_days: 7, max_active_per_owner: 1}
+web:
+  stage_timeout_seconds: 900
 network:
   modes: [foot, bicycle, motorcar]
   snapshot: null
