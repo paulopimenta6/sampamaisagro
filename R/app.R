@@ -121,6 +121,8 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
   result_state <- shiny::reactiveVal(data.frame())
   origin_state <- shiny::reactiveVal(data.frame())
   selected_equipment <- shiny::reactiveVal(validated$eligible)
+  report_equipment <- shiny::reactiveVal(validated$data)
+  report_quality_context <- shiny::reactiveVal(NULL)
   status_state <- shiny::reactiveVal("A base real j\u00e1 est\u00e1 no mapa. Escolha uma origem e clique em Encontrar equipamentos.")
   result_note <- shiny::reactiveVal("Ainda n\u00e3o foi feita uma consulta; o gr\u00e1fico de cobertura descreve a base local.")
   batch_state <- shiny::reactiveVal(NULL)
@@ -145,6 +147,7 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
     result_state(result)
     origin_state(origins)
     selected_equipment(validate_equipment(eq, config)$eligible)
+    report_equipment(eq)
     if (nrow(result)) {
       keys <- result[!duplicated(result$metric_id), c("metric_id", "metric_label")]
       selected <- shiny::isolate(input$map_metric)
@@ -177,6 +180,9 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
     current_job <<- NULL
     batch_errors(data.frame()); batch_state(NULL); batch_message(""); job_state(NULL)
     query_equipment <<- filters()
+    report_quality_context(list(groups = input$categories %||% character(),
+      accessibility = input$accessibility %||% "all", global_n = nrow(equipment),
+      snapshot = unique(equipment$snapshot_date)))
     install_result(data.frame(), data.frame(), query_equipment, "Preparando consulta local\u2026")
     cfg <- config
     cfg$proximity$default_k <- input$query_k
@@ -274,7 +280,8 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
     filename = function() paste0("relatorio-", Sys.Date(), ".html"),
     content = function(file) {
       shiny::req(nrow(result_state()) > 0, !busy())
-      render_proximity_report(result_state(), file, origin_state(), selected_equipment(), config)
+      render_proximity_report(result_state(), file, origin_state(), report_equipment(), config,
+        quality_context = report_quality_context())
     })
   output$statistics_notice <- shiny::renderUI(shiny::p(class = "query-status", result_note()))
   output$category_plot <- shiny::renderPlot({

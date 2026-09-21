@@ -1,0 +1,27 @@
+{
+  "partners": [
+    {
+      "Nome do Perfil": "Horta Sintetica Alfa",
+      "Categoria": "Agricultura",
+      "Fonte": "Fixture publica inventada",
+      "Endereço comercial": "Via Imaginaria Alfa, lote ficticio A",
+      "CEP": "00000-042",
+      "Subcategorias": [
+        "Horta",
+        "Ensino"
+      ],
+      "Qualificações": [
+        "Experimental",
+        "Sintetica"
+      ],
+      "Possui facilidades para pessoas com necessidades especiais": "TRUE",
+      "Descrição": "Perfil sintetico A",
+      "Email": "alfa@example.invalid",
+      "Telefone": "telefone ficticio A",
+      "Certificados": [
+        "Selo inventado X",
+        "Selo inventado Y"
+      ]
+    }
+  ]
+}

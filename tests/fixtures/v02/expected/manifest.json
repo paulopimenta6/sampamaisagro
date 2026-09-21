@@ -1,0 +1,69 @@
+{
+  "reference_commit": "c751eccbfbfa38a522e50c828be4278cdcda43d9",
+  "synthetic": true,
+  "snapshot": "synthetic-v02",
+  "raw_records": 8,
+  "analytical_records": 7,
+  "spatially_eligible": 3,
+  "tolerance": 1e-08,
+  "fixture_hashes": {
+    "README.md": "a9caee5f082396bfcf0afa0b13ccedff89dd3a1fd2aa52392a1fb71499331ee6",
+    "cep.csv": "b06d90932f5c1ccc40e6040c3342f9e5e76083b9559a131e2b6f1a7525c48912",
+    "config.yml": "99f3f5bb5e731bbd06a41b2cd319f0cbf6198624bf579bcdea772848e37c5e10",
+    "load.R": "bf0020b9127b2681783c30f8be6728e089cee837e45e1b1cc40370aace05932b",
+    "network-edges.csv": "b9c8e201c86ad067c32e9a3761c85801e7d60e1c3a7c12528dad353fa466d242",
+    "network-vertices.csv": "d01c9c5867035e56a2488754efdb1ece3102a0a262ad55ddf7becb3754edabee",
+    "origins.csv": "22cff3f9d44892d3c94602d514471d3a502a31c6f9533948d65f4313a97f0d1e",
+    "raw/alterado.json": "4fbb38244facf826baf27bb52dddd6f2ba1217cac0b3260ab1b90281af9a03c7",
+    "raw/base-completa-sampa-rural.json": "12b0d0308bf553b84041b0be898f1b327bd983d01a96f7b734bb7f6ed8da5c57",
+    "raw/tematico.json": "f0763cce09c88960e869b02f304fff2e3321b21e390340fd2f93dd3d6aae265d",
+    "raw/vazio.json": "bcd90ad6ee7c8907123f7bc8c151f7e522b595ddd9ab7181fd2fae55af7700aa"
+  },
+  "lc_collate": "C",
+  "r_version": "4.6.1",
+  "packages": [
+    {
+      "package": "dodgr",
+      "version": "0.5.0"
+    },
+    {
+      "package": "sf",
+      "version": "1.1.2"
+    },
+    {
+      "package": "geosphere",
+      "version": "1.6.8"
+    },
+    {
+      "package": "digest",
+      "version": "0.6.39"
+    }
+  ],
+  "spatial_libraries": {
+    "GEOS": "3.10.2",
+    "GDAL": "3.4.1",
+    "proj.4": "8.2.1",
+    "GDAL_with_GEOS": "true",
+    "USE_PROJ_H": "true",
+    "PROJ": "8.2.1"
+  },
+  "code_hashes": {
+    "R/app.R": "9a09ec996c66b260395eef6be3391d9e1398985e24afbe72db1a8dc3b9afceb7",
+    "R/batch.R": "36a88f4ad1d5ec48ee63338efddeb7d058aa521147821bbd5d46b09e05366bc6",
+    "R/catalog.R": "5feb57ac8dbed6fbc96837316dff64c8892bc3623490ec5dc20122cb88baa10e",
+    "R/collect.R": "b6e75c03305f9e5bb57f0a27e8797ef9ab98df53d178b93004a98eda0a788493",
+    "R/distance.R": "3e34b89536d802104be0e850308a36b8d4d888eae32d878bfae29e4038361d0a",
+    "R/geocode.R": "99eeab7d65cb9b80fdaac2ee857118ffff0d83faa902b1f293115b8d6af4b967",
+    "R/globals.R": "2e754427acba592838b39d86ecbe993bf58ba71430aa0fa6e7223bcf2235c64e",
+    "R/maps.R": "ac47336ef8e27a419c953ecde33cc54f107c6616f17dcfc8bbe1482b6569b410",
+    "R/network.R": "c24d599f80f7a4ee67593a6c8d6266be259d14bef4222b095c50b45682dbf27b",
+    "R/normalize.R": "dea479072bfe7a4812157781aff325ea634e80fb5f17f5de336b1defd4db90c4",
+    "R/offline.R": "382709af1ad2b6524453723f0fe44abdaa4aba0f5c1df7dc7e5463be47c1675e",
+    "R/queue.R": "531fb2fd9beea2fc7f8c77c29cca98fe6760a5587d9e42f93e2e17eb94592470",
+    "R/reports.R": "455d04172c889192f2cc9fb44d70d82e598cbbbb739ea710c66264553da8a3dc",
+    "R/stats.R": "5507afffc090dd68c054d039ea2ab2979ba18e841822a7bfc7278b01d67acb7f",
+    "R/utils.R": "054559e5e25346d018c155f5e53c7d0f1fb99f2e805429bd9882001929b7b619",
+    "R/validate.R": "b9d7e01843a985d6f31946fa64aaeb7469b843ca84156a5db1e53bdc9fe27347",
+    "R/web-jobs.R": "1187d5932edd2a3b39fba36f8d1e9d382d98013c41cd237085ae56d4262495f7"
+  }
+}

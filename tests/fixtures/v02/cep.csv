@@ -1,0 +1,2 @@
+cep,latitude,longitude,geocode_status,geocoder,geocoded_at,origin_quality_flag
+00000042,-23.612345,-46.712345,ok,Synthetic fixture only,2000-01-01 UTC,approximate_cep

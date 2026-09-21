@@ -1,0 +1,48 @@
+name: CI CORE offline
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: core-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      R_KEEP_PKG_SOURCE: 'yes'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.6.1'
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-pandoc@v2
+      - name: Prepare system dependencies (network allowed here)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgdal-dev libgeos-dev libproj-dev libudunits2-dev libcurl4-openssl-dev libssl-dev libxml2-dev libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev libpng-dev libtiff-dev libjpeg-dev libglpk-dev strace
+      - uses: r-lib/actions/setup-renv@v2
+      - name: Export restored library and verify locked versions
+        shell: Rscript {0}
+        run: |
+          source('scripts/ci/check-locked-versions.R')
+          check_locked_versions('renv.lock')
+          cat(paste0('R_LIBS=', paste(.libPaths(), collapse=.Platform$path.sep), '\n'),
+              file=Sys.getenv('GITHUB_ENV'), append=TRUE)
+      - name: Test, build, check and synthetic benchmark (no collection)
+        run: bash scripts/ci/run-offline.sh "$RUNNER_TEMP/phase0-network" Rscript scripts/ci/run-core.R "$RUNNER_TEMP/phase0-core"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase0-core-evidence
+          path: |
+            ${{ runner.temp }}/phase0-core/*.log
+            ${{ runner.temp }}/phase0-core/*.txt
+            ${{ runner.temp }}/phase0-core/testthat-results.rds
+            ${{ runner.temp }}/phase0-core/sampamaisrural.Rcheck
+            ${{ runner.temp }}/phase0-core/benchmark-smoke
+            ${{ runner.temp }}/phase0-network

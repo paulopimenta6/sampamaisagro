@@ -163,3 +163,12 @@ Preservar [PROTOCOL.md](../../PROTOCOL.md), [CODEBOOK.md](../../CODEBOOK.md),
 As decisões aprovadas de migração estão em [TARGET_V0.3.md](TARGET_V0.3.md) e no
 [plano de migração](../migration/V0.3_PLAN.md). Em particular, uma indicação
 histórica de modalidade principal não constitui decisão arquitetural da v0.3.
+
+## 7. Proteção da v0.2 — Fase 0
+
+A descrição anterior registra o estado auditado antes da implementação da
+proteção. A Fase 0 acrescenta fixtures, contratos, CI e benchmark sintéticos.
+Corrige somente a qualidade do relatório: inventário filtrado completo e contexto
+fixado no início da consulta, preservando o subconjunto espacial e os motores.
+Evidências e limites: [PHASE0_BASELINE.md](../migration/PHASE0_BASELINE.md).
+Não houve implementação da Fase 1 ou das capacidades científicas da v0.3.

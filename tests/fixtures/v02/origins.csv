@@ -1,0 +1,5 @@
+query_id,cep,latitude,longitude,k,radius_m
+coord,,-23.612345,-46.712345,2,150
+cep,00000042,,,1,1
+missing,00000043,,,1,1
+invalid,,95,-46.712345,1,1

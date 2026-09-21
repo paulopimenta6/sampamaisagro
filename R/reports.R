@@ -3,12 +3,16 @@
 #' @param results Proximity results.
 #' @param output_file Target `.html` or `.pdf` file.
 #' @param origins Optional resolved origins.
-#' @param equipment Optional canonical data for quality summaries.
+#' @param equipment Optional full inventory for quality summaries, after query
+#'   filters but before spatial eligibility exclusions.
 #' @param config Project configuration.
+#' @param quality_context Optional list frozen at query submission, with `groups`,
+#'   `accessibility`, `global_n`, and `snapshot`. Without it, quality describes
+#'   only the supplied inventory, with no claim of global coverage.
 #' @return Normalized output path, invisibly.
 #' @export
 render_proximity_report <- function(results, output_file, origins = NULL, equipment = NULL,
-                                    config = read_sampa_config()) {
+                                    config = read_sampa_config(), quality_context = NULL) {
   if (!requireNamespace("rmarkdown", quietly = TRUE)) stop("O pacote rmarkdown e necessario.")
   if (!nrow(results)) stop("Fa\u00e7a uma consulta com resultados antes de gerar o relat\u00f3rio.")
   extension <- tolower(tools::file_ext(output_file))
@@ -25,7 +29,8 @@ render_proximity_report <- function(results, output_file, origins = NULL, equipm
     input = template, output_format = format,
     output_file = basename(output_file), output_dir = dirname(output_file),
     intermediates_dir = intermediate, knit_root_dir = config$project_root,
-    params = list(results = results, origins = origins, equipment = equipment, config = config),
+    params = list(results = results, origins = origins, equipment = equipment, config = config,
+      quality_context = quality_context),
     envir = new.env(parent = asNamespace("sampamaisrural")), quiet = TRUE
   )
   invisible(normalizePath(rendered, mustWork = TRUE))

@@ -1,0 +1,20 @@
+geocoding:
+  offline: true
+  endpoint: https://example.invalid/never-call
+collection:
+  authorized: false
+spatial:
+  geographic_crs: 4326
+  projected_crs: 31983
+  bbox: {xmin: -47.10, ymin: -24.10, xmax: -46.20, ymax: -23.30}
+  snap_warning_m: 250
+  snap_max_m: 1000
+proximity:
+  default_k: 2
+  default_radius_m: 150
+batch:
+  chunk_size: 1
+  web_max_rows: 100
+network:
+  modes: [foot, bicycle, motorcar]
+  snapshot: synthetic-v02

@@ -1,0 +1,55 @@
+origin_id,equipment_id,metric_id,direction,mode,path_objective,distance_m,duration_min,origin_snap_m,equipment_snap_m,rank,within_radius,selected,routing_status,selection_k,selection_radius_m,origin_cep,geocode_source,geocode_precision,geocoded_at
+cep,synthetic-B,chebyshev_projected,symmetric,,,102.04456700896844,,0,0,1,FALSE,TRUE,not_applicable,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-B,euclidean_projected,symmetric,,,102.0518783316671,,0,0,1,FALSE,TRUE,not_applicable,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-B,geodesic_haversine,symmetric,,,101.99942769815715,,0,0,1,FALSE,TRUE,not_applicable,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-B,geodesic_karney,symmetric,,,102.05424705166507,,0,0,1,FALSE,TRUE,not_applicable,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-B,manhattan_projected,symmetric,,,103.26612952211872,,0,0,1,FALSE,TRUE,not_applicable,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-D,network_bicycle_fastest,equipment_to_origin,bicycle,fastest,350,1.1666666666666667,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-D,network_bicycle_fastest,origin_to_equipment,bicycle,fastest,300,0.3333333333333333,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-D,network_bicycle_shortest,equipment_to_origin,bicycle,shortest,350,,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-B,network_bicycle_shortest,origin_to_equipment,bicycle,shortest,100,,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-D,network_foot_fastest,equipment_to_origin,foot,fastest,350,1.1666666666666667,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-D,network_foot_fastest,origin_to_equipment,foot,fastest,300,0.3333333333333333,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-D,network_foot_shortest,equipment_to_origin,foot,shortest,350,,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-B,network_foot_shortest,origin_to_equipment,foot,shortest,100,,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-D,network_motorcar_fastest,equipment_to_origin,motorcar,fastest,350,1.1666666666666667,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-D,network_motorcar_fastest,origin_to_equipment,motorcar,fastest,300,0.3333333333333333,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-D,network_motorcar_shortest,equipment_to_origin,motorcar,shortest,350,,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+cep,synthetic-B,network_motorcar_shortest,origin_to_equipment,motorcar,shortest,100,,0,0,1,FALSE,TRUE,ok,1,1,00000042,Synthetic fixture only,postcode_provider_point,2000-01-01 UTC
+coord,synthetic-B,chebyshev_projected,symmetric,,,102.04456700896844,,0,0,1,TRUE,TRUE,not_applicable,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,chebyshev_projected,symmetric,,,204.08909764094278,,0,0,2,FALSE,TRUE,not_applicable,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,euclidean_projected,symmetric,,,102.0518783316671,,0,0,1,TRUE,TRUE,not_applicable,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,euclidean_projected,symmetric,,,204.10371173808235,,0,0,2,FALSE,TRUE,not_applicable,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,geodesic_haversine,symmetric,,,101.99942769815715,,0,0,1,TRUE,TRUE,not_applicable,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,geodesic_haversine,symmetric,,,203.99885539571687,,0,0,2,FALSE,TRUE,not_applicable,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,geodesic_karney,symmetric,,,102.05424705166507,,0,0,1,TRUE,TRUE,not_applicable,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,geodesic_karney,symmetric,,,204.10849410282248,,0,0,2,FALSE,TRUE,not_applicable,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,manhattan_projected,symmetric,,,103.26612952211872,,0,0,1,TRUE,TRUE,not_applicable,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,manhattan_projected,symmetric,,,206.53150820592418,,0,0,2,FALSE,TRUE,not_applicable,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_bicycle_fastest,equipment_to_origin,bicycle,fastest,350,1.1666666666666667,0,0,1,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-F,network_bicycle_fastest,equipment_to_origin,bicycle,fastest,450,1.6666666666666667,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,network_bicycle_fastest,origin_to_equipment,bicycle,fastest,100,1,0,0,3,TRUE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_bicycle_fastest,origin_to_equipment,bicycle,fastest,300,0.3333333333333333,0,0,1,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-F,network_bicycle_fastest,origin_to_equipment,bicycle,fastest,400,0.8333333333333334,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,network_bicycle_shortest,equipment_to_origin,bicycle,shortest,450,,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_bicycle_shortest,equipment_to_origin,bicycle,shortest,350,,0,0,1,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,network_bicycle_shortest,origin_to_equipment,bicycle,shortest,100,,0,0,1,TRUE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_bicycle_shortest,origin_to_equipment,bicycle,shortest,200,,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_foot_fastest,equipment_to_origin,foot,fastest,350,1.1666666666666667,0,0,1,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-F,network_foot_fastest,equipment_to_origin,foot,fastest,450,1.6666666666666667,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,network_foot_fastest,origin_to_equipment,foot,fastest,100,1,0,0,3,TRUE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_foot_fastest,origin_to_equipment,foot,fastest,300,0.3333333333333333,0,0,1,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-F,network_foot_fastest,origin_to_equipment,foot,fastest,400,0.8333333333333334,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,network_foot_shortest,equipment_to_origin,foot,shortest,450,,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_foot_shortest,equipment_to_origin,foot,shortest,350,,0,0,1,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,network_foot_shortest,origin_to_equipment,foot,shortest,100,,0,0,1,TRUE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_foot_shortest,origin_to_equipment,foot,shortest,200,,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_motorcar_fastest,equipment_to_origin,motorcar,fastest,350,1.1666666666666667,0,0,1,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-F,network_motorcar_fastest,equipment_to_origin,motorcar,fastest,450,1.6666666666666667,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,network_motorcar_fastest,origin_to_equipment,motorcar,fastest,100,1,0,0,3,TRUE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_motorcar_fastest,origin_to_equipment,motorcar,fastest,300,0.3333333333333333,0,0,1,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-F,network_motorcar_fastest,origin_to_equipment,motorcar,fastest,400,0.8333333333333334,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,network_motorcar_shortest,equipment_to_origin,motorcar,shortest,450,,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_motorcar_shortest,equipment_to_origin,motorcar,shortest,350,,0,0,1,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-B,network_motorcar_shortest,origin_to_equipment,motorcar,shortest,100,,0,0,1,TRUE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,
+coord,synthetic-D,network_motorcar_shortest,origin_to_equipment,motorcar,shortest,200,,0,0,2,FALSE,TRUE,ok,2,150,,provided_by_researcher,point_as_provided,

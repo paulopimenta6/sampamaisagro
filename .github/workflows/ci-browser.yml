@@ -1,0 +1,51 @@
+name: CI BROWSER synthetic (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.6.1'
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-pandoc@v2
+      - name: Prepare system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgdal-dev libgeos-dev libproj-dev libudunits2-dev libcurl4-openssl-dev libssl-dev libxml2-dev libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev libpng-dev libtiff-dev libjpeg-dev libglpk-dev
+      - uses: r-lib/actions/setup-renv@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tests/e2e/requirements-ci.txt
+      - name: Prepare browser (network allowed here)
+        run: |
+          python -m pip install -r tests/e2e/requirements-ci.txt
+          python -m playwright install --with-deps chromium
+      - name: Install candidate and export library paths
+        shell: Rscript {0}
+        run: |
+          lib <- file.path(Sys.getenv('RUNNER_TEMP'), 'candidate-library')
+          dir.create(lib)
+          status <- system2(file.path(R.home('bin'), 'R'), c('CMD', 'INSTALL', paste0('--library=', shQuote(lib)), '.'))
+          stopifnot(status == 0)
+          cat(paste0('SAMPA_FIXTURE_LIBRARY=', lib, '\nR_LIBS=',
+            paste(c(lib, .libPaths()), collapse=.Platform$path.sep), '\n'),
+            file=Sys.getenv('GITHUB_ENV'), append=TRUE)
+      - name: Synthetic browser smoke (no real data)
+        env:
+          SAMPA_TEST_ARTIFACTS: ${{ runner.temp }}/phase0-browser
+          R_PROFILE_USER: /dev/null
+          RENV_CONFIG_AUTOLOADER_ENABLED: 'FALSE'
+        run: python tests/e2e/test_fixture_app.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase0-browser-evidence
+          path: ${{ runner.temp }}/phase0-browser

@@ -1,0 +1,172 @@
+{
+  "partners": [
+    {
+      "Nome do Perfil": "Horta Sintetica Alfa",
+      "Categoria": "Agricultura",
+      "Fonte": "Fixture publica inventada",
+      "Endereço comercial": "Via Imaginaria Alfa, lote ficticio A",
+      "Latitudade": "-23.612345",
+      "Longitude": "-46.712345",
+      "CEP": "00000-042",
+      "Subcategorias": [
+        "Horta",
+        "Ensino"
+      ],
+      "Qualificações": [
+        "Experimental",
+        "Sintetica"
+      ],
+      "Possui facilidades para pessoas com necessidades especiais": "TRUE",
+      "Descrição": "Perfil sintetico A",
+      "Email": "alfa@example.invalid",
+      "Telefone": "telefone ficticio A"
+    },
+    {
+      "Nome do Perfil": "Horta Sintetica Alfa",
+      "Categoria": "Agricultura",
+      "Fonte": "Fixture publica inventada",
+      "Endereço comercial": "Via Imaginaria Alfa, lote ficticio A",
+      "Latitudade": "-23.612345",
+      "Longitude": "-46.711345",
+      "CEP": "00000-042",
+      "Subcategorias": [
+        "Horta",
+        "Ensino"
+      ],
+      "Qualificações": [
+        "Experimental",
+        "Sintetica"
+      ],
+      "Possui facilidades para pessoas com necessidades especiais": "FALSE",
+      "Descrição": "Perfil semelhante B, distinto por conteudo",
+      "Email": "alfa@example.invalid",
+      "Telefone": "telefone ficticio A"
+    },
+    {
+      "Nome do Perfil": "Sintetico Sem coordenadas",
+      "Categoria": "Agricultura",
+      "Fonte": "Fixture publica inventada",
+      "Endereço comercial": "Via Imaginaria Alfa, lote ficticio A",
+      "Latitudade": null,
+      "Longitude": null,
+      "CEP": "00000-042",
+      "Subcategorias": [
+        "Horta",
+        "Ensino"
+      ],
+      "Qualificações": [
+        "Experimental",
+        "Sintetica"
+      ],
+      "Possui facilidades para pessoas com necessidades especiais": null,
+      "Descrição": "Perfil sintetico A",
+      "Email": "alfa@example.invalid",
+      "Telefone": "telefone ficticio A"
+    },
+    {
+      "Nome do Perfil": "Sintetico Incompleto",
+      "Categoria": "Agricultura",
+      "Fonte": "Fixture publica inventada",
+      "Endereço comercial": "Via Imaginaria Alfa, lote ficticio A",
+      "Latitudade": "-23.612345",
+      "Longitude": null,
+      "CEP": "00000-042",
+      "Subcategorias": [
+        "Horta",
+        "Ensino"
+      ],
+      "Qualificações": [
+        "Experimental",
+        "Sintetica"
+      ],
+      "Possui facilidades para pessoas com necessidades especiais": null,
+      "Descrição": "Perfil sintetico A",
+      "Email": "alfa@example.invalid",
+      "Telefone": "telefone ficticio A"
+    },
+    {
+      "Nome do Perfil": "Sintetico Invalido",
+      "Categoria": "Agricultura",
+      "Fonte": "Fixture publica inventada",
+      "Endereço comercial": "Via Imaginaria Alfa, lote ficticio A",
+      "Latitudade": "95",
+      "Longitude": "-46.712345",
+      "CEP": "00000-042",
+      "Subcategorias": [
+        "Horta",
+        "Ensino"
+      ],
+      "Qualificações": [
+        "Experimental",
+        "Sintetica"
+      ],
+      "Possui facilidades para pessoas com necessidades especiais": null,
+      "Descrição": "Perfil sintetico A",
+      "Email": "alfa@example.invalid",
+      "Telefone": "telefone ficticio A"
+    },
+    {
+      "Nome do Perfil": "Sintetico Fora da area",
+      "Categoria": "Agricultura",
+      "Fonte": "Fixture publica inventada",
+      "Endereço comercial": "Via Imaginaria Alfa, lote ficticio A",
+      "Latitudade": "-22.123456",
+      "Longitude": "-46.712345",
+      "CEP": "00000-042",
+      "Subcategorias": [
+        "Horta",
+        "Ensino"
+      ],
+      "Qualificações": [
+        "Experimental",
+        "Sintetica"
+      ],
+      "Possui facilidades para pessoas com necessidades especiais": null,
+      "Descrição": "Perfil sintetico A",
+      "Email": "alfa@example.invalid",
+      "Telefone": "telefone ficticio A"
+    },
+    {
+      "Nome do Perfil": "Feira Organica CEAGESP Sintetica",
+      "Categoria": "Mercados",
+      "Fonte": "Fixture publica inventada",
+      "Endereço comercial": "Via Imaginaria Alfa, lote ficticio A",
+      "Latitudade": "-23.611445",
+      "Longitude": "-46.711345",
+      "CEP": "00000-042",
+      "Subcategorias": [
+        "Horta",
+        "Ensino"
+      ],
+      "Qualificações": [
+        "Experimental",
+        "Sintetica"
+      ],
+      "Possui facilidades para pessoas com necessidades especiais": "TRUE",
+      "Descrição": "Perfil sintetico A",
+      "Email": "alfa@example.invalid",
+      "Telefone": "telefone ficticio A"
+    },
+    {
+      "Nome do Perfil": "Horta Sintetica Alfa",
+      "Categoria": "Agricultura",
+      "Fonte": "Fixture publica inventada",
+      "Endereço comercial": "Via Imaginaria Alfa, lote ficticio A",
+      "Latitudade": "-23.612345",
+      "Longitude": "-46.712345",
+      "CEP": "00000-042",
+      "Subcategorias": [
+        "Horta",
+        "Ensino"
+      ],
+      "Qualificações": [
+        "Experimental",
+        "Sintetica"
+      ],
+      "Possui facilidades para pessoas com necessidades especiais": "TRUE",
+      "Descrição": "Perfil sintetico A",
+      "Email": "alfa@example.invalid",
+      "Telefone": "telefone ficticio A"
+    }
+  ]
+}

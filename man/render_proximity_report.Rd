@@ -9,7 +9,8 @@ render_proximity_report(
   output_file,
   origins = NULL,
   equipment = NULL,
-  config = read_sampa_config()
+  config = read_sampa_config(),
+  quality_context = NULL
 )
 }
 \arguments{
@@ -19,9 +20,14 @@ render_proximity_report(
 
 \item{origins}{Optional resolved origins.}
 
-\item{equipment}{Optional canonical data for quality summaries.}
+\item{equipment}{Optional full inventory for quality summaries, after query
+filters but before spatial eligibility exclusions.}
 
 \item{config}{Project configuration.}
+
+\item{quality_context}{Optional list frozen at query submission, with \code{groups},
+\code{accessibility}, \code{global_n}, and \code{snapshot}. Without it, quality describes
+only the supplied inventory, with no claim of global coverage.}
 }
 \value{
 Normalized output path, invisibly.

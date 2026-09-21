@@ -17,6 +17,7 @@ params:
   origins: null
   equipment: null
   config: null
+  quality_context: null
 ---
 
 ```{r setup, include=FALSE}
@@ -91,9 +92,30 @@ print(sampamaisrural::create_static_map(results, "geodesic_karney"))
 
 ```{r quality}
 page_break()
-if (!is.null(equipment) && nrow(equipment)) {
-  report_table(sampamaisrural::validate_equipment(equipment, params$config)$summary,
-    digits = 1, caption = "Cobertura de coordenadas na base fornecida ao relatório.")
+if (!is.null(equipment)) {
+  quality <- sampamaisrural::validate_equipment(equipment, params$config)
+  context <- params$quality_context
+  cat(if (is.null(context)) "Inventário fornecido ao relatório." else
+    "Inventário filtrado da consulta, antes da exclusão espacial.", "\n\n")
+  cat("Registros sem coordenadas permanecem no denominador de qualidade; não recebem distâncias.\n\n")
+  # One escaped cell per group keeps the complete selection inside the PDF page.
+  requested_groups <- if (is.null(context)) "Não informado" else
+    if (length(context$groups)) context$groups else "Todos"
+  report_table(data.frame(
+    indicador = c("Registros no inventário de qualidade", "Espacialmente elegíveis",
+      "Registros na base global", rep("Grupos solicitados", length(requested_groups)),
+      "Acessibilidade solicitada", "Snapshot"),
+    valor = c(nrow(equipment), nrow(quality$eligible),
+      if (is.null(context)) "Não informado" else context$global_n,
+      requested_groups,
+      if (is.null(context)) "Não informado" else context$accessibility,
+      paste(if (is.null(context)) unique(equipment$snapshot_date) else context$snapshot, collapse = ", "))))
+  if (nrow(equipment)) {
+    report_table(quality$summary, digits = 1,
+      table.attr = if (knitr::is_latex_output()) NULL else 'id="quality-by-category"',
+      caption = "Coordenadas válidas no inventário de qualidade (n é o denominador; cobertura de coordenadas em porcentagem).")
+    report_table(quality$issues, caption = "Problemas identificados no inventário de qualidade.")
+  } else cat("Inventário vazio: proporções de qualidade não estimáveis.\n\n")
 }
 ```
 
