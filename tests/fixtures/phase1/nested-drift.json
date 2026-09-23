@@ -1,0 +1,49 @@
+{
+  "name": "Relatório sintético",
+  "slug": "base-sintetica",
+  "partners": [
+    {
+      "Nome do Perfil": "Perfil sintético A; \"citação\"",
+      "Categoria": "Categoria sintética",
+      "Fonte": "Fonte sintética",
+      "Endereço comercial": "Local fictício A\nlinha sintética",
+      "Latitudade": 1.5,
+      "Longitude": 2.0,
+      "Possui facilidades para pessoas com necessidades especiais": true,
+      "Subcategorias": [
+        {
+          "item": "sintético"
+        }
+      ],
+      "Número de Roças": 2,
+      "Email": null
+    },
+    {
+      "Nome do Perfil": "Perfil sintético B",
+      "Categoria": "Categoria sintética",
+      "Fonte": "Fonte sintética",
+      "Endereço comercial": null,
+      "Latitudade": null,
+      "Longitude": 3.0,
+      "Possui facilidades para pessoas com necessidades especiais": false,
+      "Subcategorias": [],
+      "Número de Roças": null,
+      "Email": null
+    },
+    {
+      "Nome do Perfil": "Perfil sintético A; \"citação\"",
+      "Categoria": "Categoria sintética",
+      "Fonte": "Fonte sintética",
+      "Endereço comercial": "Local fictício A\nlinha sintética",
+      "Latitudade": 1.5,
+      "Longitude": 2.0,
+      "Possui facilidades para pessoas com necessidades especiais": true,
+      "Subcategorias": [
+        "item com, vírgula",
+        "segundo item"
+      ],
+      "Número de Roças": 2,
+      "Email": null
+    }
+  ]
+}

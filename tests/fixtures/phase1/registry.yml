@@ -1,0 +1,60 @@
+{
+  "registry_schema_version": 1,
+  "registry_revision": "synthetic-1",
+  "url_policy": {
+    "schemes": [
+      "https"
+    ],
+    "hosts": [
+      "example.invalid"
+    ],
+    "ports": [
+      443
+    ],
+    "allow_query": true
+  },
+  "sources": [
+    {
+      "source_id": "demo.base",
+      "catalog_slug": "base-sintetica",
+      "name": "Fonte inteiramente sintética",
+      "role": "complete_base",
+      "enabled": true,
+      "overlaps_with": [],
+      "representations": {
+        "json": {
+          "parser": "sampa_partners_json_v1",
+          "contract": "reports-v1.yml",
+          "filename": "base-sintetica.json"
+        },
+        "csv": {
+          "parser": "semicolon_csv_v1",
+          "contract": "reports-v1.yml",
+          "filename": "base-sintetica.csv"
+        }
+      }
+    },
+    {
+      "source_id": "demo.subset",
+      "catalog_slug": "recorte-sintetico",
+      "name": "Fonte inteiramente sintética",
+      "role": "thematic_subset",
+      "enabled": true,
+      "overlaps_with": [
+        "demo.base"
+      ],
+      "representations": {
+        "json": {
+          "parser": "sampa_partners_json_v1",
+          "contract": "reports-v1.yml",
+          "filename": "recorte-sintetico.json"
+        },
+        "csv": {
+          "parser": "semicolon_csv_v1",
+          "contract": "reports-v1.yml",
+          "filename": "recorte-sintetico.csv"
+        }
+      }
+    }
+  ]
+}

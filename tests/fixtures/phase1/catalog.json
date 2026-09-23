@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Nome sintético de apresentação 0",
+    "json": "https://example.invalid/reports/base-sintetica.json",
+    "csv": "https://example.invalid/reports/base-sintetica.csv"
+  },
+  {
+    "name": "Nome sintético de apresentação 1",
+    "json": "https://example.invalid/reports/recorte-sintetico.json",
+    "csv": "https://example.invalid/reports/recorte-sintetico.csv"
+  }
+]

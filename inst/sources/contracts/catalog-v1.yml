@@ -1,0 +1,78 @@
+# Contrato deliberado do checkpoint 1A; não é inferido automaticamente.
+contract_schema_version: 1
+contract_id: sampa.catalog
+version: 1
+representations:
+- json
+records_path: ''
+schema:
+  types:
+  - array
+  required: false
+  nullable: false
+  min_items: 1
+  items:
+    types:
+    - object
+    required: false
+    nullable: false
+    additional_fields: allow_and_report
+    properties:
+      name:
+        types:
+        - string
+        required: true
+        nullable: false
+      json:
+        types:
+        - string
+        required: true
+        nullable: false
+      csv:
+        types:
+        - string
+        required: true
+        nullable: false
+      description:
+        types:
+        - string
+        required: false
+        nullable: true
+      icon:
+        types:
+        - string
+        required: false
+        nullable: true
+      logo:
+        types:
+        - string
+        required: false
+        nullable: true
+      attributes:
+        types:
+        - array
+        required: false
+        nullable: false
+        min_items: 0
+        items:
+          types:
+          - object
+          required: false
+          nullable: false
+          additional_fields: allow_and_report
+          properties:
+            label:
+              types:
+              - string
+              required: true
+              nullable: false
+            kind:
+              types:
+              - string
+              required: false
+              nullable: true
+            description:
+              types:
+              - string
+              required: false
+              nullable: true

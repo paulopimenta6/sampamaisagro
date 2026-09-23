@@ -1,0 +1,261 @@
+# Configuração versionada. URLs dos relatórios são resolvidas no catálogo.
+registry_schema_version: 1
+registry_revision: 1.0.0
+url_policy:
+  schemes:
+  - https
+  hosts:
+  - sampamaisrural.prefeitura.sp.gov.br
+  ports:
+  - 443
+  allow_query: true
+sources:
+- source_id: sampa.complete
+  catalog_slug: base-completa-sampa-rural
+  name: Base completa
+  role: complete_base
+  enabled: true
+  overlaps_with: []
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: base-completa-sampa-rural.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: base-completa-sampa-rural.csv
+- source_id: sampa.agricultores_contato
+  catalog_slug: agricultores-com-contato-sisrural
+  name: Agricultores com contato SISRURAL
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: agricultores-com-contato-sisrural.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: agricultores-com-contato-sisrural.csv
+- source_id: sampa.agricultores_sp
+  catalog_slug: agricultores-na-cidade-de-sao-paulo-sisrural
+  name: Agricultores na cidade de São Paulo
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: agricultores-na-cidade-de-sao-paulo-sisrural.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: agricultores-na-cidade-de-sao-paulo-sisrural.csv
+- source_id: sampa.agricultores_vivencia
+  catalog_slug: agricultores-receptivos-em-vivencia-rural-sampa-rural
+  name: Agricultores receptivos em vivência rural
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: agricultores-receptivos-em-vivencia-rural-sampa-rural.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: agricultores-receptivos-em-vivencia-rural-sampa-rural.csv
+- source_id: sampa.hortas
+  catalog_slug: hortas-urbanas-e-hortas-em-equipamentos-publicos-sampa-rural
+  name: Hortas urbanas e em equipamentos públicos
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: hortas-urbanas-e-hortas-em-equipamentos-publicos-sampa-rural.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: hortas-urbanas-e-hortas-em-equipamentos-publicos-sampa-rural.csv
+- source_id: sampa.aldeias
+  catalog_slug: aldeias-indigenas-guarani-sampa-rural
+  name: Aldeias indígenas Guarani
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: aldeias-indigenas-guarani-sampa-rural.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: aldeias-indigenas-guarani-sampa-rural.csv
+- source_id: sampa.parceiros
+  catalog_slug: parceiros-da-producao-local-sampa-rural
+  name: Parceiros da produção local
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: parceiros-da-producao-local-sampa-rural.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: parceiros-da-producao-local-sampa-rural.csv
+- source_id: sampa.feiras_organicas
+  catalog_slug: mapa-de-feiras-organicas-idec
+  name: Feiras orgânicas IDEC
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: mapa-de-feiras-organicas-idec.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: mapa-de-feiras-organicas-idec.csv
+- source_id: sampa.feiras_livres
+  catalog_slug: feiras-livres-municipais-geosampa-secretaria-municipal-de-desenvolvimento-urbano
+  name: Feiras livres municipais
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: feiras-livres-municipais-geosampa-secretaria-municipal-de-desenvolvimento-urbano.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: feiras-livres-municipais-geosampa-secretaria-municipal-de-desenvolvimento-urbano.csv
+- source_id: sampa.mercados
+  catalog_slug: restaurantes-organicos-entregas-de-organicos-e-outras-bases-de-mercados-sampa-rural
+  name: Restaurantes orgânicos, entregas e mercados
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: restaurantes-organicos-entregas-de-organicos-e-outras-bases-de-mercados-sampa-rural.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: restaurantes-organicos-entregas-de-organicos-e-outras-bases-de-mercados-sampa-rural.csv
+- source_id: sampa.servicos
+  catalog_slug: servicos-para-agricultura-sampa-rural
+  name: Serviços para agricultura
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: servicos-para-agricultura-sampa-rural.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: servicos-para-agricultura-sampa-rural.csv
+- source_id: sampa.atrativos
+  catalog_slug: atrativos-turisticos-dos-polos-de-ecoturismo-secretaria-municipal-de-turismo
+  name: Atrativos turísticos dos polos de ecoturismo
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: atrativos-turisticos-dos-polos-de-ecoturismo-secretaria-municipal-de-turismo.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: atrativos-turisticos-dos-polos-de-ecoturismo-secretaria-municipal-de-turismo.csv
+- source_id: sampa.iniciativas
+  catalog_slug: iniciativas-e-politicas-publicas-sampa-rural
+  name: Iniciativas e políticas públicas
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: iniciativas-e-politicas-publicas-sampa-rural.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: iniciativas-e-politicas-publicas-sampa-rural.csv
+- source_id: sampa.doacoes
+  catalog_slug: pontos-de-doacao-sp-cidade-solidaria
+  name: Pontos de doação
+  role: thematic_subset
+  enabled: true
+  overlaps_with:
+  - sampa.complete
+  representations:
+    json:
+      parser: sampa_partners_json_v1
+      contract: reports-v1.yml
+      filename: pontos-de-doacao-sp-cidade-solidaria.json
+    csv:
+      parser: semicolon_csv_v1
+      contract: reports-v1.yml
+      filename: pontos-de-doacao-sp-cidade-solidaria.csv
+- source_id: sampa.catalog
+  catalog_slug: null
+  name: Catálogo oficial
+  role: catalog
+  enabled: true
+  overlaps_with: []
+  representations:
+    json:
+      parser: sampa_catalog_json_v1
+      contract: catalog-v1.yml
+      filename: data_reports.json
+      endpoint_config: catalog_url
+      default_url: https://sampamaisrural.prefeitura.sp.gov.br/api/data_reports
+- source_id: sampa.terms
+  catalog_slug: null
+  name: Termos de uso
+  role: terms
+  enabled: true
+  overlaps_with: []
+  representations:
+    html:
+      parser: html_document_v1
+      contract: terms-v1.yml
+      filename: termos.html
+      endpoint_config: terms_url
+      default_url: https://sampamaisrural.prefeitura.sp.gov.br/termos

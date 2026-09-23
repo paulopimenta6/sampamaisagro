@@ -1,0 +1,277 @@
+# Contrato deliberado do checkpoint 1A; não é inferido automaticamente.
+contract_schema_version: 1
+contract_id: sampa.reports
+version: 1
+representations:
+- json
+- csv
+records_path: /partners
+schema:
+  types:
+  - object
+  required: false
+  nullable: false
+  additional_fields: allow_and_report
+  properties:
+    name:
+      types:
+      - string
+      required: false
+      nullable: true
+    slug:
+      types:
+      - string
+      required: false
+      nullable: true
+    description:
+      types:
+      - string
+      required: false
+      nullable: true
+    partners:
+      types:
+      - array
+      required: true
+      nullable: false
+      min_items: 0
+      items:
+        types:
+        - object
+        required: false
+        nullable: false
+        additional_fields: allow_and_report
+        properties:
+          Nome do Perfil:
+            types:
+            - string
+            required: true
+            nullable: true
+          Categoria:
+            types:
+            - string
+            required: true
+            nullable: true
+          Fonte:
+            types:
+            - string
+            required: true
+            nullable: true
+          Endereço comercial:
+            types:
+            - string
+            required: true
+            nullable: true
+          Nome da base de dados:
+            types:
+            - string
+            required: false
+            nullable: true
+          Email:
+            types:
+            - string
+            required: false
+            nullable: true
+          Associativismo:
+            types:
+            - string
+            required: false
+            nullable: true
+          Referências:
+            types:
+            - string
+            required: false
+            nullable: true
+          Estacionamento:
+            types:
+            - string
+            required: false
+            nullable: true
+          Zona:
+            types:
+            - string
+            required: false
+            nullable: true
+          Descrição:
+            types:
+            - string
+            required: false
+            nullable: true
+          Período de funcionamento:
+            types:
+            - string
+            required: false
+            nullable: true
+          Gênero da responsável:
+            types:
+            - string
+            required: false
+            nullable: true
+          Ano de início da Atividade:
+            types:
+            - string
+            required: false
+            nullable: true
+          Telefone 1:
+            types:
+            - string
+            required: false
+            nullable: true
+          Tel 1 - Tipo:
+            types:
+            - string
+            required: false
+            nullable: true
+          Telefone 2:
+            types:
+            - string
+            required: false
+            nullable: true
+          Tel 2 - Tipo:
+            types:
+            - string
+            required: false
+            nullable: true
+          Bairro:
+            types:
+            - string
+            required: false
+            nullable: true
+          CEP:
+            types:
+            - string
+            required: false
+            nullable: true
+          Distrito:
+            types:
+            - string
+            required: false
+            nullable: true
+          Área (Ha):
+            types:
+            - string
+            required: false
+            nullable: true
+          Area cultivada (Ha):
+            types:
+            - string
+            required: false
+            nullable: true
+          Subcategorias:
+            types:
+            - array
+            nullable: true
+            items:
+              types:
+              - string
+              required: false
+              nullable: false
+          Qualificações:
+            types:
+            - array
+            nullable: true
+            items:
+              types:
+              - string
+              required: false
+              nullable: false
+          Polo de ecoturismo:
+            types:
+            - array
+            nullable: true
+            items:
+              types:
+              - string
+              required: false
+              nullable: false
+          Site/Blogs/Redes Sociais:
+            types:
+            - array
+            nullable: true
+            items:
+              types:
+              - string
+              required: false
+              nullable: false
+          Onde Comprar:
+            types:
+            - array
+            nullable: true
+            items:
+              types:
+              - string
+              required: false
+              nullable: false
+          Atividades de Conexão:
+            types:
+            - array
+            nullable: true
+            items:
+              types:
+              - string
+              required: false
+              nullable: false
+          Conexões:
+            types:
+            - array
+            nullable: true
+            items:
+              types:
+              - string
+              required: false
+              nullable: false
+          Certificados:
+            types:
+            - array
+            nullable: true
+            items:
+              types:
+              - string
+              required: false
+              nullable: false
+          Possui facilidades para pessoas com necessidades especiais:
+            types:
+            - boolean
+            required: false
+            nullable: true
+          Agricultura Familiar:
+            types:
+            - boolean
+            required: false
+            nullable: true
+          DAP:
+            types:
+            - boolean
+            required: false
+            nullable: true
+          Latitudade:
+            types:
+            - number
+            - string
+            required: false
+            nullable: true
+            preferred_types:
+            - number
+          Longitude:
+            types:
+            - number
+            - string
+            required: false
+            nullable: true
+            preferred_types:
+            - number
+          Número de Roças:
+            types:
+            - number
+            required: false
+            nullable: true
+csv_projection:
+  delimiter: ;
+  encoding: UTF-8
+  null_value: ''
+  boolean_true: Sim
+  boolean_false: Não
+  array_separator: ', '
+  numeric_fields:
+  - Latitudade
+  - Longitude
+  - Número de Roças

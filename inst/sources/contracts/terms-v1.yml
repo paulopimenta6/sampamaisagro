@@ -1,0 +1,14 @@
+# Contrato deliberado do checkpoint 1A; não é inferido automaticamente.
+contract_schema_version: 1
+contract_id: sampa.terms
+version: 1
+representations:
+- html
+records_path: null
+schema:
+  types:
+  - string
+  required: false
+  nullable: false
+  min_length: 1
+  pattern: (?is)<html(?:\s|>).*?</html\s*>
