@@ -1,4 +1,4 @@
-# Camada de fontes — checkpoint 1A
+# Camada de fontes — checkpoint 1A e checkpoint 1B, Passo I
 
 Referência protegida: `3cbf004`, branch `refactor/scientific-platform-v0.3`.
 Este checkpoint acrescenta funções **internas**, dados declarativos e testes.
@@ -8,8 +8,8 @@ Nenhuma API pública existente ou caminho de execução da aplicação foi alter
 
 - **Source Registry** é configuração versionada: fontes, identidade de catálogo,
   representações, contratos e política de URLs. Está implementado neste checkpoint.
-- **Source State** será estado operacional mutável entre verificações. Não existe
-  implementação nova de estado, ETag ou Last-Modified neste checkpoint.
+- **Source State** tem infraestrutura operacional local implementada no Passo I
+  do checkpoint 1B, descrita ao final. Não há política HTTP ou checker.
 - **Snapshot Provenance** será evidência histórica imutável de uma captura. Não
   foi implementada nem acrescentada aos snapshots existentes.
 
@@ -198,3 +198,94 @@ separados; sucesso sintético não certifica disponibilidade das APIs oficiais.
 
 Não foram alterados collect, normalização, validação espacial, prepare, IDs,
 distâncias, redes, Shiny, batch, web jobs, targets, snapshots ou .atomic-*.
+
+## Checkpoint 1B — Passo I: infraestrutura operacional local
+
+Base: `248a9cf`, `feat: add source registry and schema contracts`. Somente funções
+internas, testes sintéticos e esta documentação foram acrescentados. A proteção
+existente tem 790 verificações. Esta entrega não conclui o checkpoint 1B inteiro.
+
+`R/source-http.R` contém somente identidade e canonicalização puras. Não chama
+HTTP. `source_request_identity()` recebe source_id, representação, URL fornecida,
+registry local e headers. Reutiliza a política de URL e slug do 1A antes do
+parsing. Seu descritor v1 contém fonte, representação, URL integral, método de
+representação `GET`, Accept e Accept-Encoding. O marcador GET não executa GET.
+Query mantém sua ordem original; variação de URL ou negociação muda a identidade.
+Headers condicionais, User-Agent, revisões e contexto de execução não entram.
+
+O User-Agent configurado contém `sampamaisagro/0.2`; não existe evidência local
+de negociação de representação por esse header. Ele foi excluído do hash para
+evitar churn por versão. Headers de negociação adicionais não são aceitos
+silenciosamente. Nenhuma configuração do projeto foi alterada.
+
+### Canonical JSON v1
+
+`source_canonical_json()` ordena recursivamente chaves de objetos por radix em
+UTF-8 e preserva a ordem dos arrays. NULL vira null; logical vira true/false;
+números finitos usam 17 dígitos significativos com ponto decimal explícito.
+Integer/double têm a mesma representação numérica; zero negativo vira zero.
+Strings preservam codepoints, sem transliteração ou normalização Unicode.
+Objetos vazios e arrays vazios são distintos. NA, infinitos, atributos/classes,
+raw e chaves duplicadas são rejeitados. Bytes de conteúdo usam hash diretamente,
+sem essa serialização. Leitura JSON sem simplificação preserva o round-trip.
+
+### Estado, revisão e eventos
+
+A raiz é `<data_dir>/cache/sources/`, com `locks`, `state` e `content`. Leituras
+não criam diretórios. `read_source_state()` valida toda a cadeia e a integridade
+do conteúdo validado atual, sem reparar nada. Estado ausente retorna NULL.
+
+As revisões ficam em
+`state/<source_id>/<representation>/<identity_sha256>/revisions/000000000001.json`.
+Cada registro contém record_schema_version, state_revision, previous_record_sha256,
+record_sha256, event e state_after. O checksum usa Canonical JSON v1 sem o próprio
+record_sha256; previous_record_sha256 participa. Não existe current.json.
+Gap, checksum inválido, JSON corrompido, identidade divergente ou versão
+incompatível bloqueiam; não há fallback silencioso para revisão antiga.
+
+`new_source_state()` estabelece campos separados para último check, observação
+HTTP, conteúdo validado, candidato, erro e mudança confirmada. Slots HTTP ficam
+NULL nesta entrega. `source_state_event()` permite eventos estruturados e IDs/
+relógio injetáveis, sem slots para payload, linhas, contatos ou segredos.
+Eventos têm tipos e campos permitidos; códigos são identificadores restritos.
+
+`commit_source_event()` exige a revisão atual, valida referências de blobs,
+escreve temporário no mesmo diretório, fecha, relê, verifica, confirma destino
+ausente, renomeia e relê o final. Revisões anteriores não são sobrescritas.
+Hooks internos permitem falha antes/depois da escrita e promoção nos testes.
+Temporários interrompidos ficam preservados e nunca são adotados como revisão.
+
+### Locks, cache e promoção
+
+`acquire_source_lock()` usa dir.create como aquisição exclusiva por source_id.
+O proprietário contém token, PID, hostname e início UTC. Lock existente, órfão
+ou sem metadata válida bloqueia. Só o proprietário verificado libera seu lock;
+arquivos inesperados nele impedem remoção. Não há expiração ou limpeza automática.
+
+`store_source_content()` armazena raw exatamente em
+`content/<source_id>/<representation>/<sha256>.bin`, com temporário/verificação/
+rename. Blob existente íntegro é reutilizado; adulteração bloqueia. Não cria
+links, snapshots ou manifests. `verify_source_content()` retorna decisão e código
+de diagnóstico para path, existência, arquivo regular, tamanho e SHA-256.
+
+Paths de conteúdo devem coincidir com o caminho derivado da fonte, representação
+e hash. Paths absolutos, traversal e symlinks operacionais, inclusive aliases
+internos e links pendentes, são rejeitados. A raiz é derivada de configuração
+local confiável; caminhos arbitrários do JSON não são adotados.
+
+`source_state_candidate()` só muda latest_candidate. `source_state_promote()`
+exige decisão explícita allow/warn; block não promove. A gravação de mudança no
+conteúdo validado exige evento content_validated associado ao hash. A existência
+de blob órfão não gera promoção. Metadata de validação deve conter somente
+evidência estrutural fornecida pelo chamador interno, nunca o payload.
+
+Suporte limitado a filesystem local e escritores que respeitem o lock. Não há
+garantia NFS/distribuída, resistência a usuário local malicioso trocando paths
+entre syscalls, durabilidade contra perda de energia ou assinatura criptográfica.
+Checksums detectam corrupção, não autenticam a origem. Caches/temporários/locks
+órfãos não são limpos automaticamente. Liberação do próprio lock é seu ciclo
+normal; não é varredura de artefatos históricos.
+
+Não existem transporte real, HEAD/GET executáveis, ETag/Last-Modified condicional,
+304, retries, redirects, sampa_check_updates, integração com coleta/proveniência
+ou Fase 2. Nenhuma API pública, dependência, registry ou contrato foi alterado.

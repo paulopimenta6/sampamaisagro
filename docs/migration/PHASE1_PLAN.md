@@ -1,4 +1,4 @@
-# Fase 1 — entrega incremental, checkpoint 1A
+# Fase 1 — entrega incremental, checkpoint 1A e checkpoint 1B, Passo I
 
 Base confirmada antes de editar: `3cbf004`,
 `test: protect v0.2 behavior before v0.3 refactor`, branch
@@ -108,3 +108,53 @@ Não houve observação completa de syscalls e não se afirma isolamento de rede
 pelo kernel. Browser E2E, coleta e validação real não foram executados neste
 checkpoint; aplicação e motores permanecem intactos. Nenhuma execução remota de
 GitHub Actions desta mudança foi anunciada: não houve commit ou push.
+
+## Autorização posterior — checkpoint 1B, Passo I
+
+Base confirmada: `248a9cf`, `feat: add source registry and schema contracts`,
+branch `refactor/scientific-platform-v0.3`, working tree inicialmente limpo.
+As seções e evidências anteriores descrevem a entrega histórica do 1A; seu
+estado aprovado atual protege 790 verificações. Não se reescreve esse histórico.
+
+O Passo I implementa somente identidade de requisição, Canonical JSON v1, estado
+operacional, revisões imutáveis/checksum chain, escrita atômica, lock por fonte,
+cache de bytes por SHA-256 e transições explícitas candidate/validated. As
+interfaces internas e limitações estão em [SOURCE_LAYER.md](../architecture/SOURCE_LAYER.md).
+
+Criados R/source-state.R, R/source-http.R, dois arquivos de testes e helper
+sintético. R/source-http.R é puro e não faz HTTP. Sem fixtures reais, exports,
+dependências, alteração do registry/contratos, configuração ou código legado.
+Testes usam diretórios temporários próprios, bytes inventados e falhas injetadas.
+O teste de concorrência usa dois processos locais com uma barreira controlada.
+
+Gates: testes direcionados, todos os phase1, suíte completa, CORE offline
+aprovado com build/R CMD check e benchmark smoke. Não executar browser, targets,
+GitHub Actions, coleta ou serviços externos. Evidências ficam somente em /tmp.
+
+Não estão implementados HTTP/validators/Conditional GET, checker público ou
+integração com collect. Não há decisão de snapshot nem mudança em raw, processed,
+manifestos ou snapshots parciais. Não iniciar checkpoint 1C ou Fase 2.
+
+### Evidências do Passo I — 30/09/2026
+
+| Verificação | Resultado |
+|---|---|
+| Testes novos direcionados | 17 testes, 293 verificações, sem falhas/warnings/skips |
+| Todos os phase1 | 774 verificações aprovadas |
+| testthat completo | 1.083 verificações: 790 anteriores + 293 novas; sem falhas/warnings/skips |
+| Concorrência local | Dois processos reais; exatamente um adquiriu o lock |
+| CORE offline isolado | Exit 0; testes locais e do pacote instalado aprovados |
+| Build + R CMD check | Pacote construído; Status: OK |
+| Benchmark smoke | Concluído pelo runner aprovado, sem alteração de engines |
+
+Logs/artefatos: `/tmp/phase1b-step1-final-directed-phase1.log`, resultados RDS
+direcionados/phase1, `/tmp/phase1b-step1-testthat.log`,
+`/tmp/phase1b-step1-core.log`, `/tmp/phase1b-step1-core/` e
+`/tmp/phase1b-step1-network/enforcement.txt`. Nenhuma evidência histórica foi
+sobrescrita. O sandbox bloqueou strace: enforcement LIMITED, com mocks HTTP
+conhecidos, sem afirmar isolamento completo de rede ou observação de syscalls.
+
+A primeira rodada direcionada identificou referência não qualificada a
+file_test no ambiente isolado dos processos filhos. Foi corrigida no módulo
+novo usando utils::file_test, mantendo as expectativas de concorrência.
+Não houve coleta, API externa, browser E2E, targets ou GitHub Actions.
