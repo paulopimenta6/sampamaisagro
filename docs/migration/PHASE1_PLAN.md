@@ -1,4 +1,4 @@
-# Fase 1 — entrega incremental, checkpoint 1A e checkpoint 1B, Passo I
+# Fase 1 — entrega incremental, checkpoint 1A e checkpoint 1B, Passos I–II
 
 Base confirmada antes de editar: `3cbf004`,
 `test: protect v0.2 behavior before v0.3 refactor`, branch
@@ -158,3 +158,44 @@ A primeira rodada direcionada identificou referência não qualificada a
 file_test no ambiente isolado dos processos filhos. Foi corrigida no módulo
 novo usando utils::file_test, mantendo as expectativas de concorrência.
 Não houve coleta, API externa, browser E2E, targets ou GitHub Actions.
+
+## Autorização posterior — checkpoint 1B, Passo II
+
+Passo I encerrado e commitado na base
+`aa101c65ea73153e91d9edb25786d09b35961865`,
+`feat: add persistent source state foundation`. Preflight deste passo confirmou
+branch `refactor/scientific-platform-v0.3`, árvore limpa e diff --check sem erros.
+As correções/revisões posteriores às evidências históricas acima consolidaram
+104 testes e 1.270 verificações antes do Passo II; elas permanecem protegidas.
+
+Implementação limitada ao transporte interno em R/source-http.R, novo arquivo
+test-phase1-http-transport.R e documentação. As funções de identidade do Passo I,
+R/source-state.R, registry/contratos e caminhos de execução legados não mudam.
+
+Escopo entregue:
+
+1. Executor httr2 com fronteira injetável e testes sem acesso externo.
+2. HEAD para metadata sem download, sem fallback GET, sem blob ou retrieved_at.
+3. GET 200 como raw exato no cache operacional, ainda candidato sem promoção.
+4. Validators somente de validated_content da mesma identidade e cache íntegro;
+   ETag precede Last-Modified; novos 200 nunca herdam validators ausentes.
+5. 304 estrito e uma recuperação incondicional quando o cache desaparece/corrompe.
+6. Redirects explícitos, máximo cinco, com URL policy 1A e isolamento por identidade.
+7. Máximo três tentativas por hop, timeout explícito, Retry-After seconds/date
+   independente de locale e espera máxima 60 segundos, injetada nos testes.
+8. Resultado estruturado sanitizado, sem body e sem commit de estado automático.
+
+As interfaces, decisões conservadoras e limites estão na seção Passo II de
+[SOURCE_LAYER.md](../architecture/SOURCE_LAYER.md). A leitura da cadeia de revisões
+é separada da elegibilidade do cache sem enfraquecer read_source_state().
+
+Gates: HTTP direcionado; todos os phase1; suíte completa; CORE offline em
+`/tmp/phase1b-step2-core` com evidências de rede em `/tmp/phase1b-step2-network`;
+build/check do pacote instalado; benchmark smoke; inspeção de escopo e Git.
+O fallback aprovado de mocks continua válido quando strace não puder executar,
+sem alegar isolamento de syscalls. Não executar internet pública, coleta real,
+targets, browser E2E ou GitHub Actions para validar este passo.
+
+Passo III (Update Checker/orquestração/schema/commits de estado) não implementado.
+Checkpoint 1C (collect/proveniência) e Fase 2 não iniciados. Check permanece
+distinto de collect; este transporte não decide nem cria snapshots.

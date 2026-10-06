@@ -1,4 +1,4 @@
-# Camada de fontes — checkpoint 1A e checkpoint 1B, Passo I
+# Camada de fontes — checkpoint 1A e checkpoint 1B, Passos I–II
 
 Referência protegida: `3cbf004`, branch `refactor/scientific-platform-v0.3`.
 Este checkpoint acrescenta funções **internas**, dados declarativos e testes.
@@ -9,12 +9,14 @@ Nenhuma API pública existente ou caminho de execução da aplicação foi alter
 - **Source Registry** é configuração versionada: fontes, identidade de catálogo,
   representações, contratos e política de URLs. Está implementado neste checkpoint.
 - **Source State** tem infraestrutura operacional local implementada no Passo I
-  do checkpoint 1B, descrita ao final. Não há política HTTP ou checker.
+  do checkpoint 1B, descrita ao final. O transporte interno do Passo II não
+  escreve esse estado. Ainda não há checker.
 - **Snapshot Provenance** será evidência histórica imutável de uma captura. Não
   foi implementada nem acrescentada aos snapshots existentes.
 
-Esses conceitos não são equivalentes. Não há checker, transporte HTTP novo,
-integração com coleta, gate analítico, recuperação nova ou componente da Fase 2.
+Esses conceitos não são equivalentes. O transporte interno do Passo II é descrito
+ao final. Não há checker, integração com coleta, gate analítico, recuperação de
+snapshots ou componente da Fase 2.
 OSM, CEP e IBGE continuam integrações externas existentes, sem contratos executáveis
 ou novas operações neste registry 1A.
 
@@ -190,8 +192,8 @@ precisam ser comparados em memória, mas só diagnósticos estruturais saem da A
 
 ## Limites e continuidade
 
-Os testes são inteiramente sintéticos em tests/fixtures/phase1. Não existe
-transporte a mockar neste módulo: o bloqueio HTTP da Fase 0 fica ativo nos testes
+Os testes do 1A são inteiramente sintéticos em tests/fixtures/phase1. Não existe
+transporte nos módulos do 1A: o bloqueio HTTP da Fase 0 fica ativo nos testes
 negativos. O CORE existente descobre estes testes e instala os assets sem mudar
 workflow. Validação de escala real e revisão de novos contratos permanecem gates
 separados; sucesso sintético não certifica disponibilidade das APIs oficiais.
@@ -205,8 +207,8 @@ Base: `248a9cf`, `feat: add source registry and schema contracts`. Somente funç
 internas, testes sintéticos e esta documentação foram acrescentados. A proteção
 existente tem 790 verificações. Esta entrega não conclui o checkpoint 1B inteiro.
 
-`R/source-http.R` contém somente identidade e canonicalização puras. Não chama
-HTTP. `source_request_identity()` recebe source_id, representação, URL fornecida,
+No Passo I, `R/source-http.R` continha somente identidade e canonicalização puras.
+Essas funções continuam sem HTTP. `source_request_identity()` recebe source_id, representação, URL fornecida,
 registry local e headers. Reutiliza a política de URL e slug do 1A antes do
 parsing. Seu descritor v1 contém fonte, representação, URL integral, método de
 representação `GET`, Accept e Accept-Encoding. O marcador GET não executa GET.
@@ -286,6 +288,111 @@ Checksums detectam corrupção, não autenticam a origem. Caches/temporários/lo
 órfãos não são limpos automaticamente. Liberação do próprio lock é seu ciclo
 normal; não é varredura de artefatos históricos.
 
-Não existem transporte real, HEAD/GET executáveis, ETag/Last-Modified condicional,
-304, retries, redirects, sampa_check_updates, integração com coleta/proveniência
-ou Fase 2. Nenhuma API pública, dependência, registry ou contrato foi alterado.
+O Passo I não incluiu transporte real, HEAD/GET executáveis, ETag/Last-Modified
+condicional, 304, retries ou redirects. A extensão interna abaixo implementa
+somente o Passo II. Nenhuma API pública, dependência, registry ou contrato foi alterado.
+
+## Checkpoint 1B — Passo II: transporte HTTP interno
+
+O Passo I foi encerrado na base `aa101c65ea73153e91d9edb25786d09b35961865`,
+com 1.270 verificações protegidas. Identidade, Canonical JSON, estado, cadeia de
+checksums, locks e cache permanecem intactos. `R/source-state.R` não foi alterado.
+
+`source_http_request(config, identity, registry, allow_download = FALSE,
+force_content = FALSE, performer, state_lookup, clock, sleep, timeout = 30,
+max_attempts = 3)` é interna. Recebe uma identidade fornecida pelo chamador;
+não descobre catálogo remoto, não escolhe fontes e não é o Update Checker.
+O performer recebe método, URL, identidade, headers de negociação/condição,
+User-Agent, timeout e tentativa por hop. Devolve status, headers, URL e body raw
+interno. Tests usam performer falso; o adapter httr2 também pode receber um
+executor falso, sem sockets nem monkeypatch como único mecanismo de injeção.
+
+### Método, validators e conteúdo
+
+- `allow_download = FALSE`: somente HEAD, inclusive após redirects, 405/501 ou
+  ausência de validators. Não consulta estado para condicionar HEAD. Body é
+  ignorado, sem extração como dataset, cache ou retrieved_at.
+- `allow_download = TRUE`: GET. Só validated_content da identidade exata, com
+  conditional_reuse_allowed TRUE e blob verificado, pode fornecer condição.
+  ETag tem prioridade: apenas If-None-Match; sem ETag, apenas If-Modified-Since.
+  ETag inválido não autoriza fallback para outro validator.
+- `force_content = TRUE` exige download permitido e remove condições. A cadeia
+  de estado continua sendo validada; force não oculta corrupção persistida.
+- `source_http_state_lookup()` usa read_source_revisions() para validar toda a
+  cadeia antes da política de cache. Cache ausente/adulterado desabilita condição;
+  cadeia corrompida bloqueia. read_source_state() mantém sua verificação estrita.
+- GET 200 grava exatamente o raw por store_source_content(), devolvendo SHA-256,
+  bytes, relative_path, reutilização do blob e retrieved_at UTC. O adapter desativa
+  decodificação automática de Content-Encoding; não converte texto/JSON/newlines.
+  Validators ausentes na nova resposta ficam NULL: nunca herdam valores antigos.
+
+ETag preserva W/, aspas e caixa. Headers repetidos/ambíguos, controles ou sintaxe
+inválida são excluídos da reutilização e diagnosticados como invalid_validator,
+sem devolver o valor inválido. Last-Modified aceita conservadoramente IMF-fixdate
+em GMT, com meses/dias ingleses mapeados explicitamente, independente de locale.
+Formas HTTP-date obsoletas não são reutilizadas; não são reinterpretadas.
+
+### 304, redirects e retries
+
+304 só é aceito em GET que efetivamente enviou condição de conteúdo validado,
+íntegro antes da tentativa. Não cria blob/retrieved_at nem confirma igualdade
+byte-a-byte. O cache é novamente verificado após 304. Se desapareceu/corrompeu,
+há uma única recuperação GET incondicional, sem retries adicionais nessa
+recuperação. 304 incondicional é protocol_error. Não há reparo ou promoção de estado.
+Se um GET recuperado tiver o mesmo hash de um blob local adulterado, a regra
+do Passo I bloqueia a colisão; o arquivo adulterado não é substituído.
+
+Há no máximo cinco redirects por operação, resolvidos explicitamente. A resolução
+separa scheme, authority, path bruto e query; a query da base não entra no path,
+e bases sem path ou com scheme em maiúsculas preservam sua authority. Mantém
+dot-segments para que a política 1A os rejeite antes de normalização.
+Host/esquema/porta/credenciais/fragmentos/slug passam pela política existente.
+Cada destino recebe identidade própria e lookup próprio. Condições do hop anterior
+nunca são copiadas. HEAD continua HEAD; recuperação continua incondicional.
+A URL efetiva pode diferir apenas na caixa de scheme/host ou na raiz vazia versus
+`/`, após validação pela política existente. Porta explícita, path restante e
+query continuam exatos. Outra mudança sem redirect explícito gera invalid_response.
+A identidade mantém a URL original integral; equivalência de transporte não
+implica equivalência de identidade. O resultado registra a URL efetiva observada.
+
+Há no máximo três tentativas por hop, com timeout de 30 segundos por tentativa
+(ajustável internamente). Retry ocorre em 429, 500/502/503/504, timeout reconhecido
+ou erros transitórios classificados de conexão/DNS/envio/recepção. Outros 4xx,
+501, violações de protocolo/política e BLOCK local não recebem retry. Erro de
+programação desconhecido propaga; não vira falha de rede. O adapter desativa
+redirects automáticos e o retry do httr2: `is_transient = function(resp) FALSE`,
+`retry_on_failure = FALSE`, além do limite de uma tentativa. Em httr2 1.2.2,
+remover req_retry ou usar somente max_tries = 1 ainda permite classificação de
+429/503 e parsing interno de Retry-After. A configuração usa somente API pública.
+Nosso loop é o único responsável por retry, parsing de espera e backoff.
+Regressões executam req_perform real em processo isolado com a fronteira curl
+substituída, incluindo 429/503 com Retry-After HTTP-date sem Date e sem sleep real.
+
+Retry-After aceita segundos inteiros ou IMF-fixdate. Data passada dá espera zero;
+valor inválido/ambíguo usa backoff 1/2 segundos; qualquer espera fica limitada a
+60 segundos. Clock e sleep são injetáveis. Não há espera real nos testes HTTP.
+O cache é rechecado antes de reenviar uma condição em retry.
+
+### Contrato do resultado e limites
+
+O resultado mantém slots explícitos, inclusive NULL: requested_identity, identity
+final, método, requested_url/effective_url, http_status, attempts total, requests
+por tentativa (condição/status/erro/sleep), redirects, condition_sent/condition,
+observed_etag_raw/observed_last_modified_raw, content (GET 200), reused_content
+(304), cache_reused, retrieved_at, recovery, diagnostics, outcome e error.
+content_changed permanece NA: comparação de mudanças não pertence ao transporte.
+Headers observados são metadata; nunca são associados automaticamente a bytes.
+
+outcome pode ser metadata, candidate, not_modified, http_error, transport_error,
+protocol_error, redirect_error, argument_error ou blocked. error contém apenas
+kind/code/decision; source_state_block conserva seu code. Argumentos contraditórios
+são rejeitados antes de executar o transporte por source_http_error classificado.
+Não há body, registros, contatos, headers arbitrários, mensagens curl/OS ou stack
+trace no resultado. URLs são as URLs públicas aprovadas, necessárias à identidade;
+não há suporte a credenciais ou transporte autenticado.
+
+O único efeito persistente HTTP autorizado é o blob GET 200 (além do ciclo normal
+do lock próprio). Não há revisão/evento de estado automático, promoção de candidato,
+schema validation, snapshot, manifest ou publicação analítica. User-Agent usa a
+configuração atual e continua fora da identidade. Não existem sampa_check_updates,
+R/source-updates.R, integração collect/provenance, checkpoint 1C ou Fase 2.
