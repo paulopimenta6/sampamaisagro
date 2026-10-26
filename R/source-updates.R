@@ -278,6 +278,7 @@ source_observation_load_baseline <- function(config, identity, state_lookup = so
 }
 
 source_observation_metadata <- function(state, identity, method, headers, policy) {
+  if ("last_http_invalid_validator" %in% state$last_check$reason_codes) return(NA)
   old <- state$last_http_observation
   previous <- NULL
   if (!is.null(old) && source_state_time(old$observed_at) &&
@@ -396,6 +397,10 @@ source_observation_representation <- function(config, identity, registry = load_
   finish <- function(out, plan = NULL, content = NULL, retrieved_at = NULL) {
     ended <- clock()
     if (!source_state_time(ended)) source_update_abort("invalid_clock")
+    # Inspect only the terminal response, before invalid headers become NULL.
+    if (!is.null(response_headers) && length(source_http_validators(response_headers)$invalid)) {
+      out$reason_codes <- unique(c(out$reason_codes, "last_http_invalid_validator"))
+    }
     loaded <- states[[effective$sha256]]
     out["transport"] <- list(transport)
     out$context <- list(requested_identity = identity, effective_identity = effective,
@@ -496,4 +501,330 @@ source_observation_representation <- function(config, identity, registry = load_
   tryCatch(run(), source_state_block = function(e) finish(source_update_result("blocked",
     reason_codes = e$code, error = list(kind = "state", code = e$code),
     redirected = !is.null(transport) && length(transport$redirects) > 0L)))
+}
+
+# B1b: terminal persistence only. Observations and all network/schema work precede
+# this boundary. Locking, integrity, canonical records and atomic IO belong to I.
+source_persistence_types <- function() {
+  c("content_validated", "candidate_stored", "check_finished", "state_validation_failed")
+}
+
+source_persistence_eligibility <- function(observation, check_id) {
+  if (!source_state_token(check_id)) source_update_abort("invalid_check_id")
+  core <- names(formals(source_update_result))
+  fields <- c(core, "result_version", "transport", "persistence", "context",
+    "joint_acceptance_required", "planned_event_type", "content")
+  source_update_object(observation, fields, fields)
+  do.call(source_update_result, observation[core])
+  ctx <- observation$context
+  source_update_object(ctx, c("requested_identity", "effective_identity", "registry_revision",
+    "contract_id", "contract_version", "contract_sha256", "state_revision", "started_at", "checked_at"),
+    c("requested_identity", "effective_identity", "registry_revision", "contract_id", "contract_version",
+      "contract_sha256", "state_revision", "started_at", "checked_at"))
+  validate_source_request_identity(ctx$requested_identity)
+  validate_source_request_identity(ctx$effective_identity)
+  a <- ctx$requested_identity$descriptor; b <- ctx$effective_identity$descriptor
+  if (!identical(a$source_id, b$source_id) || !identical(a$representation, b$representation) ||
+      !source_string(ctx$registry_revision) || !source_string(ctx$contract_id) ||
+      !source_state_integer(ctx$contract_version, 1) || !source_state_hash(ctx$contract_sha256) ||
+      !source_state_time(ctx$started_at) || !source_state_time(ctx$checked_at) ||
+      (!is.null(ctx$state_revision) && !source_state_integer(ctx$state_revision, 1)) ||
+      !source_update_flag(observation$joint_acceptance_required) ||
+      !is.null(observation$persistence) || !identical(observation$result_version, 1L)) {
+    source_update_abort("invalid_persistence_observation")
+  }
+  # Joint observations never consume their terminal event, including failures.
+  if (observation$joint_acceptance_required) return("pending_joint_acceptance")
+  if (observation$status == "blocked") return("observation_blocked")
+  t <- observation$transport
+  if (!is.list(t) || !identical(t$identity, ctx$effective_identity) ||
+      !identical(t$requested_identity, ctx$requested_identity) ||
+      !source_string(t$method) || !t$method %in% c("HEAD", "GET") || !length(t$requests)) {
+    source_update_abort("invalid_terminal_transport")
+  }
+  last <- t$requests[[length(t$requests)]]
+  if (!identical(last$identity_sha256, ctx$effective_identity$sha256) ||
+      !identical(last$method, t$method) || !identical(last$url, b$absolute_request_url) ||
+      !identical(last$status, t$http_status)) source_update_abort("invalid_terminal_request")
+  plan <- observation$planned_event_type
+  if (!source_string(plan) || !plan %in% source_persistence_types()) source_update_abort("invalid_terminal_plan")
+  content_result <- t$outcome %in% c("candidate", "not_modified")
+  if (content_result) {
+    reused <- identical(t$outcome, "not_modified")
+    expected <- if (observation$status == "incompatible_content") {
+      if (reused) "state_validation_failed" else "candidate_stored"
+    } else "content_validated"
+    statuses <- if (reused) c("not_modified", "incompatible_content") else
+      c("initialized", "content_unchanged", "content_changed", "incompatible_content")
+    ref <- if (reused) t$reused_content else t$content
+    content <- observation$content
+    source_update_object(content, c("sha256", "bytes", "relative_path", "retrieved_at"),
+      c("sha256", "bytes", "relative_path", "retrieved_at"))
+    validate_source_content_reference(content, b$source_id, b$representation)
+    if (!identical(plan, expected) || !observation$status %in% statuses || t$method != "GET" ||
+        !isTRUE(t$http_status == if (reused) 304L else 200L) ||
+        !source_state_time(content$retrieved_at) ||
+        !identical(source_canonical_json(content[c("sha256", "bytes", "relative_path")]), source_canonical_json(ref)) ||
+        (reused && (!isTRUE(t$condition_sent) || is.null(t$condition) || isTRUE(t$recovery) || !is.null(t$retrieved_at))) ||
+        (!reused && !identical(content$retrieved_at, t$retrieved_at))) source_update_abort("invalid_content_observation")
+    if (!reused && (is.null(observation$candidate) ||
+        !identical(observation$candidate$identity_sha256, ctx$effective_identity$sha256) ||
+        !identical(observation$candidate$sha256, content$sha256))) source_update_abort("invalid_candidate_observation")
+    v <- source_update_validation_metadata(observation$validation, accepted = plan == "content_validated")
+    if (!identical(v$contract_id, ctx$contract_id) || !isTRUE(v$contract_version == ctx$contract_version) ||
+        !identical(v$contract_sha256, ctx$contract_sha256) ||
+        (plan != "content_validated" && !identical(v$decision, "block"))) source_update_abort("invalid_validation_observation")
+  } else {
+    permitted <- if (identical(t$outcome, "metadata")) {
+      t$method == "HEAD" && source_state_integer(t$http_status, 200, 299) &&
+        observation$status %in% c("metadata_changed", "indeterminate")
+    } else t$outcome %in% c("http_error", "transport_error", "protocol_error", "redirect_error", "argument_error") &&
+      observation$status %in% c("source_unavailable", "check_failed")
+    if (!isTRUE(permitted) || plan != "check_finished" || !is.null(observation$content)) {
+      source_update_abort("invalid_check_observation")
+    }
+  }
+  NULL
+}
+
+source_persistence_outcome <- function(outcome, receipt = NULL, code = NULL, error = NULL) {
+  if (!source_string(outcome) || !outcome %in% c("not_attempted", "committed", "failed", "uncertain") ||
+      (identical(outcome, "committed") != !is.null(receipt))) source_update_abort("invalid_persistence_outcome")
+  if (!is.null(error)) source_update_result("check_failed", error = list(kind = "persistence", code = error))
+  list(outcome = outcome, reason_codes = if (is.null(code)) character() else code,
+    receipt = receipt, error = if (is.null(error)) NULL else list(kind = "persistence", code = error))
+}
+
+source_persistence_result <- function(observation, persistence) {
+  decision <- observation
+  if (!is.null(persistence$error)) {
+    blocked <- persistence$outcome == "not_attempted"
+    code <- persistence$error$code
+    decision <- source_update_result(if (blocked) "blocked" else "check_failed",
+      reason_codes = code, retryable = blocked && code %in% c("lock_busy", "stale_state_revision"),
+      error = persistence$error)
+  }
+  list(status = decision$status, content_changed = decision$content_changed,
+    severity = decision$severity, retryable = decision$retryable,
+    observation = observation, persistence = persistence)
+}
+
+source_persistence_validators <- function(transport, previous = NULL) {
+  headers <- list(etag = transport$observed_etag_raw, `last-modified` = transport$observed_last_modified_raw)
+  current <- source_http_validators(headers[!vapply(headers, is.null, logical(1))])
+  ambiguous <- current$invalid
+  for (diagnostic in transport$diagnostics) {
+    if (identical(diagnostic$identity_sha256, transport$identity$sha256) &&
+        identical(diagnostic$code, "invalid_validator")) {
+      # No attempt index is supplied by II. An omitted field with such a
+      # diagnostic cannot safely be distinguished from an invalid terminal one.
+      ambiguous <- union(ambiguous, diagnostic$headers)
+    }
+  }
+  keys <- c(etag_raw = "etag", last_modified_raw = "last-modified")
+  old_headers <- list(etag = previous$etag_raw, `last-modified` = previous$last_modified_raw)
+  old <- source_http_validators(old_headers[!vapply(old_headers, is.null, logical(1))])
+  for (key in names(keys)) {
+    if (!is.null(current[[key]])) ambiguous <- setdiff(ambiguous, keys[[key]]) else
+      if (!keys[[key]] %in% ambiguous && !is.null(previous)) current[key] <- old[key]
+  }
+  allowed <- !is.null(current$etag_raw) ||
+    (!"etag" %in% ambiguous && !is.null(current$last_modified_raw))
+  list(etag_raw = current$etag_raw, last_modified_raw = current$last_modified_raw,
+    conditional_reuse_allowed = allowed,
+    conditional_reuse_restrictions = if (allowed) list() else
+      as.list(if (length(ambiguous)) "invalid_or_ambiguous_validator" else "no_valid_validator"))
+}
+
+source_persistence_event <- function(observation, check_id) {
+  ctx <- observation$context
+  event_id <- source_canonical_sha256(list(id_schema_version = 1L, check_id = check_id,
+    request_identity_sha256 = ctx$effective_identity$sha256))
+  source_state_event(observation$planned_event_type, ctx$effective_identity,
+    clock = function() ctx$checked_at, id = function() event_id,
+    content_sha256 = observation$content$sha256, decision = observation$validation$decision,
+    code = if (length(observation$reason_codes)) observation$reason_codes[[1L]] else observation$status,
+    check_id = check_id)
+}
+
+source_persistence_transition <- function(state, observation, event) {
+  ctx <- observation$context; t <- observation$transport
+  identity <- ctx$effective_identity
+  if (is.null(state)) state <- new_source_state(identity)
+  validate_source_state(state, identity)
+  old <- state$validated_content
+  if (event$type != "check_finished") {
+    baseline <- if (is.null(old)) NULL else list(identity_sha256 = identity$sha256, sha256 = old$sha256)
+    if (!identical(source_canonical_json(baseline), source_canonical_json(observation$baseline))) {
+      source_state_block("observation_baseline_mismatch")
+    }
+    if (t$outcome == "not_modified") {
+      fields <- c("sha256", "bytes", "relative_path", "retrieved_at")
+      if (is.null(old) || !identical(source_canonical_json(old[fields]), source_canonical_json(observation$content))) {
+        source_state_block("revalidation_baseline_mismatch")
+      }
+    }
+  }
+  if (event$type == "content_validated") {
+    validation <- source_update_validation_metadata(observation$validation, accepted = TRUE)
+    if (t$outcome == "candidate") {
+      classified <- source_update_classify_representation("accepted_200", identity$sha256,
+        observation$content$sha256, observation$baseline)
+      if (!identical(classified$status, observation$status)) source_state_block("observation_classification_mismatch")
+      state <- source_state_candidate(state, observation$content, validation, function() observation$content$retrieved_at)
+      state <- source_state_promote(state, validation, function() ctx$checked_at)
+      if (!is.null(old) && !identical(old$sha256, observation$content$sha256)) {
+        state$last_confirmed_content_change <- list(observed_at = observation$content$retrieved_at,
+          previous_sha256 = old$sha256, observed_sha256 = observation$content$sha256,
+          candidate_accepted = TRUE, event_id = event$event_id)
+      }
+    } else {
+      state$validated_content$validation <- validation
+      state$validated_content$validated_at <- ctx$checked_at
+    }
+    validators <- source_persistence_validators(t, if (t$outcome == "not_modified") old else NULL)
+    state$validated_content[names(validators)] <- validators
+    if (!is.null(state$last_error) && is.null(state$last_error$resolved_at)) state$last_error$resolved_at <- ctx$checked_at
+  } else if (event$type == "candidate_stored") {
+    state <- source_state_candidate(state, observation$content,
+      source_update_validation_metadata(observation$validation), function() observation$content$retrieved_at)
+  }
+  reasons <- observation$reason_codes
+  # The existing reason-code slot carries comparability of last_http_observation.
+  # A check without a response retains that observation and its ambiguity.
+  if (is.null(t$http_status) && "last_http_invalid_validator" %in% state$last_check$reason_codes) {
+    reasons <- unique(c(reasons, "last_http_invalid_validator"))
+  }
+  state$last_check <- list(check_id = event$check_id, started_at = ctx$started_at,
+    finished_at = ctx$checked_at, status = observation$status, reason_codes = as.list(reasons))
+  state$registry_revision_seen <- ctx$registry_revision
+  if (!is.null(t$http_status)) {
+    last <- t$requests[[length(t$requests)]]
+    state$last_http_observation <- list(observed_at = ctx$checked_at, method = t$method,
+      request_url = last$url, http_status = t$http_status, etag_raw = t$observed_etag_raw,
+      last_modified_raw = t$observed_last_modified_raw, event_id = event$event_id)
+  }
+  if (observation$status %in% c("incompatible_content", "source_unavailable", "check_failed")) {
+    state$last_error <- list(observed_at = ctx$checked_at,
+      code = if (is.null(observation$error)) event$code else observation$error$code,
+      kind = if (is.null(observation$error)) "validation" else observation$error$kind, resolved_at = NULL)
+  }
+  validate_source_state(state, identity)
+  state
+}
+
+source_persistence_require_content <- function(config, state) {
+  for (field in c("validated_content", "latest_candidate")) if (!is.null(state[[field]])) {
+    source_require_content(config, state$source_id, state$representation, state[[field]])
+  }
+  invisible(TRUE)
+}
+
+source_persistence_matches <- function(record, prepared) {
+  expected <- prepared$state_after
+  expected$state_revision <- prepared$generation + 1L
+  isTRUE(record$state_revision == prepared$generation + 1L) &&
+    identical(record$previous_record_sha256, prepared$head_sha256) &&
+    identical(source_canonical_json(record$event), source_canonical_json(prepared$event)) &&
+    identical(source_canonical_json(record$state_after), source_canonical_json(expected))
+}
+
+# Only call with a record from the fully validated revision chain.
+source_persistence_receipt <- function(record) {
+  c(record$event[c("source_id", "representation", "request_identity_sha256")],
+    list(state_revision = record$state_revision), record$event[c("event_id", "check_id", "type")],
+    list(record_sha256 = record$record_sha256))
+}
+
+source_persistence_prepare <- function(config, observation, check_id, lock) {
+  gate <- source_persistence_eligibility(observation, check_id)
+  if (!is.null(gate)) source_state_block(gate)
+  identity <- observation$context$effective_identity
+  assert_source_lock(config, identity$descriptor$source_id, lock)
+  records <- read_source_revisions(config, identity)
+  generation <- observation$context$state_revision %||% 0L
+  event <- source_persistence_event(observation, check_id)
+  found <- which(vapply(records, function(r) identical(r$event$event_id, event$event_id) ||
+    (identical(r$event$check_id, check_id) && r$event$type %in% source_persistence_types()), logical(1)))
+  if (length(found) && (length(found) != 1L || found != generation + 1L)) source_state_block("check_id_conflict")
+  if (!length(found) && length(records) != generation) source_state_block("stale_state_revision")
+  previous <- if (generation) records[[generation]] else NULL
+  prepared <- list(identity = identity, generation = generation, head_sha256 = previous$record_sha256,
+    event = event, state_after = source_persistence_transition(previous$state_after, observation, event), receipt = NULL)
+  if (length(found)) {
+    record <- records[[found]]
+    if (!source_persistence_matches(record, prepared)) source_state_block("check_id_conflict")
+    # Historical confirmation does not assert that this is still the current head.
+    prepared$receipt <- source_persistence_receipt(record)
+  } else source_persistence_require_content(config, prepared$state_after)
+  prepared
+}
+
+source_persistence_reconcile <- function(config, prepared, lock) {
+  tryCatch({
+    assert_source_lock(config, prepared$identity$descriptor$source_id, lock)
+    records <- read_source_revisions(config, prepared$identity)
+    index <- prepared$generation + 1L
+    if (length(records) >= index) {
+      if (!source_persistence_matches(records[[index]], prepared)) {
+        return(source_persistence_outcome("uncertain", error = "terminal_record_conflict"))
+      }
+      return(source_persistence_outcome("committed", source_persistence_receipt(records[[index]])))
+    }
+    head <- if (length(records)) records[[length(records)]]$record_sha256 else NULL
+    if (length(records) == prepared$generation && identical(head, prepared$head_sha256)) {
+      return(source_persistence_outcome("failed", error = "terminal_record_absent"))
+    }
+    source_persistence_outcome("uncertain", error = "terminal_record_unconfirmed")
+  }, source_state_block = function(e) source_persistence_outcome("uncertain", error = e$code))
+}
+
+source_persistence_commit <- function(config, prepared, lock, hooks = list()) {
+  assert_source_lock(config, prepared$identity$descriptor$source_id, lock)
+  records <- read_source_revisions(config, prepared$identity)
+  head <- if (length(records)) records[[length(records)]]$record_sha256 else NULL
+  if (length(records) != prepared$generation || !identical(head, prepared$head_sha256)) source_state_block("stale_state_revision")
+  source_persistence_require_content(config, prepared$state_after)
+  failure <- tryCatch({
+    commit_source_event(config, prepared$identity, prepared$event, prepared$state_after, lock = lock, hooks = hooks)
+    NULL
+  }, source_state_block = function(e) e)
+  # Unexpected programming/untagged IO errors propagate; explicit retry with the
+  # same check ID can still reconcile a revision already left by that invocation.
+  persistence <- source_persistence_reconcile(config, prepared, lock)
+  if (persistence$outcome == "committed") {
+    if (!is.null(failure)) persistence$reason_codes <- "commit_reconciled"
+    # Once the record is proved, subsequent integrity diagnostics cannot undo it.
+    tryCatch(source_persistence_require_content(config, prepared$state_after), source_state_block = function(e) {
+      persistence$error <<- list(kind = "persistence", code = e$code)
+    })
+  } else if (!is.null(failure)) persistence$reason_codes <- failure$code
+  persistence
+}
+
+source_persistence_representation <- function(config, observation, check_id, lock = NULL,
+                                              hooks = list(), clock = source_state_now, id = source_state_id) {
+  gate <- source_persistence_eligibility(observation, check_id)
+  if (!is.null(gate)) return(source_persistence_result(observation,
+    source_persistence_outcome("not_attempted", code = gate)))
+  persistence <- NULL; primary_error <- NULL
+  tryCatch({
+    tryCatch(with_source_lock(config, observation$context$effective_identity$descriptor$source_id, function(held) {
+      # Observe escaping body errors before on.exit cleanup can replace them.
+      withCallingHandlers({
+        prepared <- source_persistence_prepare(config, observation, check_id, held)
+        persistence <<- if (!is.null(prepared$receipt)) source_persistence_outcome("committed", prepared$receipt,
+          code = "already_committed") else source_persistence_commit(config, prepared, held, hooks)
+      }, error = function(e) primary_error <<- e)
+    }, lock = lock, clock = clock, id = id), error = function(e) {
+      # Rethrow the original condition; never classify an unexpected error.
+      stop(if (is.null(primary_error)) e else primary_error)
+    })
+  }, source_state_block = function(e) {
+    if (is.null(persistence)) persistence <<- source_persistence_outcome("not_attempted", error = e$code) else {
+      # Includes failure of the owned lock's on.exit release after a proved write.
+      persistence$error <<- list(kind = "persistence", code = e$code)
+    }
+  })
+  source_persistence_result(observation, persistence)
 }
