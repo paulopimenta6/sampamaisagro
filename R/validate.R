@@ -34,8 +34,8 @@ validate_equipment <- function(data, config = read_sampa_config()) {
       data$within_municipality[rows] <- lengths(sf::st_intersects(points, boundary)) > 0
     }
   }
-  data$quality_flags <- ifelse(is.na(data$equipment_name) | !nzchar(data$equipment_name), "missing_name", "")
-  data$quality_flags <- ifelse(is.na(data$category) | !nzchar(data$category),
+  data$quality_flags <- ifelse(is.na(data$equipment_name) | !nzchar(trimws(as.character(data$equipment_name))), "missing_name", "")
+  data$quality_flags <- ifelse(is.na(data$category) | !nzchar(trimws(as.character(data$category))),
     paste0(data$quality_flags, ifelse(nzchar(data$quality_flags), "|", ""), "missing_category"), data$quality_flags)
 
   duplicated_ids <- duplicated(data$record_version_id %||% data$equipment_id)
@@ -63,18 +63,42 @@ validate_equipment <- function(data, config = read_sampa_config()) {
 
 #' Summarize data completeness by category
 #'
+#' The denominator is every profile in the supplied consolidated analytical data,
+#' before spatial eligibility exclusions. Profiles removed during earlier
+#' consolidation are not represented. Each percentage uses its category's `n`.
+#' Missing text includes `NA`, empty strings and whitespace-only strings.
+#'
 #' @param data Annotated equipment data.
 #' @return Data frame with deterministic counts and proportions.
 #' @export
 data_quality_summary <- function(data) {
-  category <- ifelse(is.na(data$category) | !nzchar(data$category), "Sem categoria", data$category)
+  missing_text <- function(x) is.na(x) | !nzchar(trimws(as.character(x)))
+  missing_category <- missing_text(data$category)
+  missing_cep <- if (is.null(data$postal_code)) rep(TRUE, nrow(data)) else missing_text(data$postal_code)
+  category <- as.character(data$category)
+  category[missing_category] <- "Sem categoria"
+  coordinate_ok <- data$coordinate_status %in% c("valid_source_coordinate", "derived_geocode")
+  duplicated_ids <- duplicated(data$record_version_id %||% data$equipment_id)
+  indicators <- list(
+    missing_coordinate = data$coordinate_status %in% "missing_coordinate",
+    incomplete_coordinate = data$coordinate_status %in% "incomplete_coordinate",
+    invalid_coordinate = data$coordinate_status %in% "invalid_coordinate",
+    outside_study_area = data$coordinate_status %in% "outside_study_area",
+    spatial_eligible = coordinate_ok & !duplicated_ids,
+    missing_name = missing_text(data$equipment_name),
+    missing_category = missing_category,
+    missing_cep = missing_cep
+  )
   split_data <- split(seq_len(nrow(data)), category)
-  rows <- lapply(names(split_data), function(cat) {
-    i <- split_data[[cat]]
-    ok <- data$coordinate_status[i] %in% c("valid_source_coordinate", "derived_geocode")
-    data.frame(category = cat, n = length(i), coordinate_n = sum(ok),
-      coordinate_pct = if (length(i)) 100 * mean(ok) else NA_real_,
-      cep_n = sum(!is.na(data$postal_code[i]) & nzchar(data$postal_code[i])), stringsAsFactors = FALSE)
-  })
-  dplyr::bind_rows(rows)[order(vapply(rows, function(x) -x$n, numeric(1))), , drop = FALSE]
+  summary <- data.frame(category = as.character(names(split_data)),
+    n = as.integer(lengths(split_data)), stringsAsFactors = FALSE)
+  summary$coordinate_n <- vapply(split_data, function(i) sum(coordinate_ok[i]), integer(1))
+  summary$coordinate_pct <- 100 * summary$coordinate_n / summary$n
+  summary$cep_n <- vapply(split_data, function(i) sum(!missing_cep[i]), integer(1))
+  for (name in names(indicators)) {
+    count_col <- paste0(name, "_n")
+    summary[[count_col]] <- vapply(split_data, function(i) sum(indicators[[name]][i]), integer(1))
+    summary[[paste0(name, "_pct")]] <- 100 * summary[[count_col]] / summary$n
+  }
+  summary[order(-summary$n), , drop = FALSE]
 }
