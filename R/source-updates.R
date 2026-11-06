@@ -509,7 +509,7 @@ source_persistence_types <- function() {
   c("content_validated", "candidate_stored", "check_finished", "state_validation_failed")
 }
 
-source_persistence_eligibility <- function(observation, check_id) {
+source_persistence_eligibility <- function(observation, check_id, resolution = NULL) {
   if (!source_state_token(check_id)) source_update_abort("invalid_check_id")
   core <- names(formals(source_update_result))
   fields <- c(core, "result_version", "transport", "persistence", "context",
@@ -534,7 +534,9 @@ source_persistence_eligibility <- function(observation, check_id) {
     source_update_abort("invalid_persistence_observation")
   }
   # Joint observations never consume their terminal event, including failures.
-  if (observation$joint_acceptance_required) return("pending_joint_acceptance")
+  coordinated <- !is.null(resolution)
+  if (coordinated) source_coordination_authorize(resolution, observation, check_id)
+  if (observation$joint_acceptance_required && !coordinated) return("pending_joint_acceptance")
   if (observation$status == "blocked") return("observation_blocked")
   t <- observation$transport
   if (!is.list(t) || !identical(t$identity, ctx$effective_identity) ||
@@ -556,6 +558,12 @@ source_persistence_eligibility <- function(observation, check_id) {
     } else "content_validated"
     statuses <- if (reused) c("not_modified", "incompatible_content") else
       c("initialized", "content_unchanged", "content_changed", "incompatible_content")
+    # C binds the exact terminal observation to an explicit joint/coverage
+    # resolution. Standalone B1b retains its original acceptance gates.
+    if (coordinated) {
+      expected <- plan
+      statuses <- c(statuses, "indeterminate", "metadata_changed")
+    }
     ref <- if (reused) t$reused_content else t$content
     content <- observation$content
     source_update_object(content, c("sha256", "bytes", "relative_path", "retrieved_at"),
@@ -567,13 +575,13 @@ source_persistence_eligibility <- function(observation, check_id) {
         !identical(source_canonical_json(content[c("sha256", "bytes", "relative_path")]), source_canonical_json(ref)) ||
         (reused && (!isTRUE(t$condition_sent) || is.null(t$condition) || isTRUE(t$recovery) || !is.null(t$retrieved_at))) ||
         (!reused && !identical(content$retrieved_at, t$retrieved_at))) source_update_abort("invalid_content_observation")
-    if (!reused && (is.null(observation$candidate) ||
+    if (!reused && !(coordinated && observation$status == "metadata_changed") && (is.null(observation$candidate) ||
         !identical(observation$candidate$identity_sha256, ctx$effective_identity$sha256) ||
         !identical(observation$candidate$sha256, content$sha256))) source_update_abort("invalid_candidate_observation")
     v <- source_update_validation_metadata(observation$validation, accepted = plan == "content_validated")
     if (!identical(v$contract_id, ctx$contract_id) || !isTRUE(v$contract_version == ctx$contract_version) ||
         !identical(v$contract_sha256, ctx$contract_sha256) ||
-        (plan != "content_validated" && !identical(v$decision, "block"))) source_update_abort("invalid_validation_observation")
+        (!coordinated && plan != "content_validated" && !identical(v$decision, "block"))) source_update_abort("invalid_validation_observation")
   } else {
     permitted <- if (identical(t$outcome, "metadata")) {
       t$method == "HEAD" && source_state_integer(t$http_status, 200, 299) &&
@@ -636,13 +644,15 @@ source_persistence_validators <- function(transport, previous = NULL) {
       as.list(if (length(ambiguous)) "invalid_or_ambiguous_validator" else "no_valid_validator"))
 }
 
-source_persistence_event <- function(observation, check_id) {
+source_persistence_event <- function(observation, check_id, resolution = NULL) {
   ctx <- observation$context
   event_id <- source_canonical_sha256(list(id_schema_version = 1L, check_id = check_id,
     request_identity_sha256 = ctx$effective_identity$sha256))
   source_state_event(observation$planned_event_type, ctx$effective_identity,
     clock = function() ctx$checked_at, id = function() event_id,
-    content_sha256 = observation$content$sha256, decision = observation$validation$decision,
+    content_sha256 = observation$content$sha256,
+    decision = if (is.null(resolution)) observation$validation$decision else
+      observation$validation$pair_evidence$decision %||% observation$validation$decision,
     code = if (length(observation$reason_codes)) observation$reason_codes[[1L]] else observation$status,
     check_id = check_id)
 }
@@ -653,7 +663,7 @@ source_persistence_transition <- function(state, observation, event) {
   if (is.null(state)) state <- new_source_state(identity)
   validate_source_state(state, identity)
   old <- state$validated_content
-  if (event$type != "check_finished") {
+  if (event$type != "check_finished" || !is.null(observation$content)) {
     baseline <- if (is.null(old)) NULL else list(identity_sha256 = identity$sha256, sha256 = old$sha256)
     if (!identical(source_canonical_json(baseline), source_canonical_json(observation$baseline))) {
       source_state_block("observation_baseline_mismatch")
@@ -736,14 +746,14 @@ source_persistence_receipt <- function(record) {
     list(record_sha256 = record$record_sha256))
 }
 
-source_persistence_prepare <- function(config, observation, check_id, lock) {
-  gate <- source_persistence_eligibility(observation, check_id)
+source_persistence_prepare <- function(config, observation, check_id, lock, resolution = NULL) {
+  gate <- source_persistence_eligibility(observation, check_id, resolution)
   if (!is.null(gate)) source_state_block(gate)
   identity <- observation$context$effective_identity
   assert_source_lock(config, identity$descriptor$source_id, lock)
   records <- read_source_revisions(config, identity)
   generation <- observation$context$state_revision %||% 0L
-  event <- source_persistence_event(observation, check_id)
+  event <- source_persistence_event(observation, check_id, resolution)
   found <- which(vapply(records, function(r) identical(r$event$event_id, event$event_id) ||
     (identical(r$event$check_id, check_id) && r$event$type %in% source_persistence_types()), logical(1)))
   if (length(found) && (length(found) != 1L || found != generation + 1L)) source_state_block("check_id_conflict")
@@ -827,4 +837,403 @@ source_persistence_representation <- function(config, observation, check_id, loc
     }
   })
   source_persistence_result(observation, persistence)
+}
+
+# Unit C. A cycle is an in-memory replay input, not a durable journal. It keeps
+# B1a observations separate from joint decisions and from confirmed receipts.
+source_coordination_source <- function(registry, source_id) {
+  validate_source_registry(registry)
+  found <- Filter(function(s) identical(s$source_id, source_id) && isTRUE(s$enabled), registry$sources)
+  if (length(found) != 1L) source_update_abort("unknown_coordination_source")
+  found[[1L]]
+}
+
+source_coordination_cycle <- function(observations, check_id, registry, source_id, kind) {
+  source <- source_coordination_source(registry, source_id)
+  formats <- if (kind == "pair") c("json", "csv") else "json"
+  source_update_object(observations, formats)
+  observations <- stats::setNames(lapply(formats, function(fmt) observations[[fmt]]), formats)
+  cycle <- list(cycle_version = 1L, kind = kind, source_id = source_id, source_role = source$role,
+    check_id = check_id, registry_revision = registry$registry_revision,
+    registry_sha256 = source_canonical_sha256(registry), observations = observations,
+    pair = NULL, coverage = NULL, error = NULL)
+  source_coordination_validate(cycle)
+  cycle
+}
+
+source_coordination_validate <- function(cycle) {
+  fields <- c("cycle_version", "kind", "source_id", "source_role", "check_id", "registry_revision",
+    "registry_sha256", "observations", "pair", "coverage", "error")
+  source_update_object(cycle, fields, fields)
+  if (!identical(cycle$cycle_version, 1L) || !source_state_token(cycle$check_id) ||
+      !source_string(cycle$registry_revision) || !source_state_hash(cycle$registry_sha256) ||
+      !source_string(cycle$kind) || !cycle$kind %in% c("pair", "catalog")) source_update_abort("invalid_cycle")
+  source_state_namespace(cycle$source_id)
+  if (!(if (cycle$kind == "pair") cycle$source_role %in% c("complete_base", "thematic_subset") else
+      identical(cycle$source_role, "catalog"))) source_update_abort("invalid_cycle_role")
+  formats <- if (cycle$kind == "pair") c("json", "csv") else "json"
+  source_update_object(cycle$observations, formats, formats)
+  contexts <- list(); methods <- character()
+  for (fmt in formats) {
+    obs <- cycle$observations[[fmt]]
+    if (is.null(obs)) next
+    source_persistence_eligibility(obs, cycle$check_id)
+    ctx <- obs$context; d <- ctx$effective_identity$descriptor
+    if (!identical(d$source_id, cycle$source_id) || !identical(d$representation, fmt) ||
+        !identical(ctx$registry_revision, cycle$registry_revision) ||
+        (cycle$kind == "pair" && !isTRUE(obs$joint_acceptance_required))) source_update_abort("incompatible_cycle_observation")
+    contexts[[fmt]] <- ctx[c("contract_id", "contract_version", "contract_sha256")]
+    methods <- c(methods, obs$transport$method)
+  }
+  if (length(unique(methods)) > 1L || (length(contexts) == 2L &&
+      !identical(contexts[[1L]], contexts[[2L]]))) source_update_abort("incompatible_cycle_contract")
+  if (!is.null(cycle$error)) {
+    source_update_object(cycle$error, c("status", "code"), c("status", "code"))
+    source_update_result(cycle$error$status, reason_codes = cycle$error$code)
+  }
+  if (!is.null(cycle$pair)) {
+    p <- cycle$pair
+    self <- c("representation", "requested_identity_sha256", "effective_identity_sha256", "content_sha256")
+    keys <- c("check_id", "classification", "decision", "contract_id", "contract_version",
+      "contract_sha256", "registry_revision", "comparison", self, "partner")
+    source_update_object(p, keys, keys)
+    adapted <- source_update_validation_metadata(list(decision = "allow", classification = "valid", pair_evidence = p))$pair_evidence
+    if (cycle$kind != "pair" || length(contexts) != 2L ||
+        !all(vapply(cycle$observations, source_coordination_content_valid, logical(1))) ||
+        !identical(p$check_id, cycle$check_id) || !identical(p$registry_revision, cycle$registry_revision) ||
+        !identical(source_canonical_json(p[self]), source_canonical_json(source_coordination_member(cycle$observations$json))) ||
+        !identical(source_canonical_json(p$partner), source_canonical_json(source_coordination_member(cycle$observations$csv))) ||
+        !identical(source_canonical_json(p), source_canonical_json(adapted)) ||
+        !identical(source_canonical_json(p[names(contexts[[1L]])]), source_canonical_json(contexts[[1L]])) ||
+        !p$classification %in% c("consistent_under_projection", "inconsistent_under_projection", "insufficient_evidence") ||
+        (p$classification == "inconsistent_under_projection" && p$decision != "block") ||
+        (p$classification == "insufficient_evidence" && p$decision != "warn") ||
+        (p$classification == "consistent_under_projection" && (p$decision == "block" ||
+          !isTRUE(p$comparison$row_multiset_matches) || length(p$comparison$unsupported_fields)))) {
+      source_update_abort("invalid_joint_evidence")
+    }
+  }
+  if (!is.null(cycle$coverage)) {
+    source_update_object(cycle$coverage, c("classification", "decision", "mapping", "issues"),
+      c("classification", "decision", "mapping", "issues"))
+    if (cycle$kind != "catalog" || !cycle$coverage$decision %in% c("allow", "review", "block") ||
+        !is.data.frame(cycle$coverage$mapping) || !is.data.frame(cycle$coverage$issues)) source_update_abort("invalid_coverage")
+  }
+  invisible(TRUE)
+}
+
+source_coordination_content_valid <- function(obs) {
+  !is.null(obs$content) && obs$status != "blocked" && !is.null(obs$validation) &&
+    obs$validation$decision %in% c("allow", "warn") && obs$transport$outcome %in% c("candidate", "not_modified")
+}
+
+source_coordination_member <- function(obs) {
+  list(representation = obs$context$effective_identity$descriptor$representation,
+    requested_identity_sha256 = obs$context$requested_identity$sha256,
+    effective_identity_sha256 = obs$context$effective_identity$sha256, content_sha256 = obs$content$sha256)
+}
+
+source_coordination_read <- function(config, observation, reader = read_source_payload) {
+  ctx <- observation$context; d <- ctx$effective_identity$descriptor
+  source_require_content(config, d$source_id, d$representation, observation$content)
+  path <- source_safe_path(source_operational_root(config), observation$content$relative_path)
+  payload <- reader(path, d$representation)
+  source_require_content(config, d$source_id, d$representation, observation$content)
+  payload
+}
+
+source_coordination_contract <- function(cycle, registry, contract_loader) {
+  source <- source_coordination_source(registry, cycle$source_id)
+  contract <- contract_loader(source$representations$json$contract)
+  validate_schema_contract(contract)
+  for (obs in cycle$observations) if (!is.null(obs) &&
+      (!identical(obs$context$contract_id, contract$contract_id) ||
+       !isTRUE(obs$context$contract_version == contract$version) ||
+       !identical(obs$context$contract_sha256, source_canonical_sha256(contract)))) {
+    source_update_abort("cycle_contract_changed")
+  }
+  contract
+}
+
+source_coordination_resolve <- function(config, observations, check_id, registry = load_source_registry(),
+                                       source_id, contract_loader = load_schema_contract,
+                                       reader = read_source_payload, pair_validator = validate_source_pair) {
+  cycle <- source_coordination_cycle(observations, check_id, registry, source_id, "pair")
+  contract <- source_coordination_contract(cycle, registry, contract_loader)
+  if (all(vapply(cycle$observations, source_coordination_content_valid, logical(1)))) {
+    tryCatch({
+      json <- source_coordination_read(config, cycle$observations$json, reader)
+      csv <- source_coordination_read(config, cycle$observations$csv, reader)
+      pair <- pair_validator(json, csv, contract, source_id)
+      comparison <- pair[intersect(names(pair), names(source_update_validation_shape()$pair_evidence$comparison))]
+      decision <- pair$decision
+      if (pair$classification == "consistent_under_projection" && cycle$observations$json$validation$decision == "warn") decision <- "warn"
+      evidence <- list(check_id = check_id, classification = pair$classification, decision = decision,
+        contract_id = contract$contract_id, contract_version = contract$version,
+        contract_sha256 = source_canonical_sha256(contract), registry_revision = registry$registry_revision,
+        comparison = comparison)
+      evidence <- c(evidence, source_coordination_member(cycle$observations$json),
+        list(partner = source_coordination_member(cycle$observations$csv)))
+      cycle$pair <- source_update_validation_metadata(list(decision = "allow", classification = "valid",
+        pair_evidence = evidence))$pair_evidence
+    }, source_state_block = function(e) cycle$error <<- list(status = "blocked", code = e$code))
+  }
+  source_coordination_validate(cycle)
+  cycle
+}
+
+# Schema and coverage are separate observations. A global coverage block never
+# exposes a supposedly unaffected subset of executable mappings.
+source_coordination_catalog <- function(config, observation, check_id, registry = load_source_registry(),
+                                       contract_loader = load_schema_contract, reader = read_source_payload) {
+  cycle <- source_coordination_cycle(list(json = observation), check_id, registry,
+    observation$context$effective_identity$descriptor$source_id, "catalog")
+  source_coordination_contract(cycle, registry, contract_loader)
+  if (source_coordination_content_valid(observation)) tryCatch({
+    cycle$coverage <- reconcile_source_catalog(registry, source_coordination_read(config, observation, reader))
+    if (cycle$coverage$decision == "block") cycle$coverage$mapping <- cycle$coverage$mapping[FALSE, , drop = FALSE]
+  }, source_state_block = function(e) cycle$error <<- list(status = "blocked", code = e$code))
+  source_coordination_validate(cycle)
+  cycle
+}
+
+source_coordination_observe <- function(config, source_id, catalog, check_id, registry = load_source_registry(),
+                                       allow_download = FALSE, force_content = FALSE,
+                                       execute = httr2::req_perform, clock = source_state_now, sleep = Sys.sleep,
+                                       contract_loader = load_schema_contract) {
+  cycle <- source_coordination_cycle(list(), check_id, registry, source_id, "pair")
+  source_coordination_validate(catalog)
+  if (catalog$kind != "catalog" || !identical(catalog$registry_sha256, cycle$registry_sha256)) source_update_abort("incompatible_catalog_cycle")
+  if (!source_update_flag(allow_download) || !source_update_flag(force_content) ||
+      (!allow_download && force_content)) source_update_abort("invalid_download_contract")
+  if (!is.null(catalog$error) || any(vapply(catalog$observations, function(o) o$status == "blocked", logical(1))) ||
+      identical(catalog$coverage$decision, "block")) {
+    cycle$error <- list(status = "blocked", code = "catalog_blocked"); return(cycle)
+  }
+  if (is.null(catalog$coverage)) {
+    cycle$error <- list(status = "indeterminate", code = "catalog_resolution_unavailable"); return(cycle)
+  }
+  mapping <- catalog$coverage$mapping
+  mapping <- mapping[mapping$source_id == source_id & mapping$enabled, , drop = FALSE]
+  if (nrow(mapping) != 2L || !setequal(mapping$representation, c("json", "csv"))) source_update_abort("invalid_catalog_mapping")
+  identities <- lapply(c("json", "csv"), function(fmt) source_request_identity(source_id, fmt,
+    mapping$url[mapping$representation == fmt], registry))
+  observations <- stats::setNames(lapply(identities, function(identity) source_observation_representation(
+    config, identity, registry, allow_download = allow_download, force_content = force_content,
+    joint_acceptance_required = TRUE, execute = execute, clock = clock, sleep = sleep,
+    contract_loader = contract_loader)), c("json", "csv"))
+  source_coordination_resolve(config, observations, check_id, registry, source_id, contract_loader)
+}
+
+source_coordination_accepted <- function(cycle) {
+  if (!is.null(cycle$error)) return(FALSE)
+  if (cycle$kind == "catalog") return(!is.null(cycle$coverage) && cycle$coverage$decision != "block" &&
+    source_coordination_content_valid(cycle$observations$json))
+  !is.null(cycle$pair) && cycle$pair$classification == "consistent_under_projection" &&
+    cycle$pair$decision %in% c("allow", "warn")
+}
+
+source_coordination_evidence <- function(cycle, fmt) {
+  if (is.null(cycle$pair)) return(NULL)
+  # No own/partner event_id or state_revision: these are logical facts only.
+  evidence <- cycle$pair
+  if (fmt == "csv") {
+    self <- names(evidence$partner)
+    evidence[self] <- cycle$pair$partner
+    evidence$partner <- cycle$pair[self]
+  }
+  evidence
+}
+
+source_coordination_terminal <- function(cycle, fmt) {
+  obs <- cycle$observations[[fmt]]
+  if (is.null(obs) || obs$status == "blocked") return(obs)
+  v <- obs$validation; plan <- obs$planned_event_type; status <- obs$status
+  accepted <- source_coordination_accepted(cycle)
+  if (!is.null(obs$content)) {
+    reused <- obs$transport$outcome == "not_modified"
+    if (cycle$kind == "pair" && !is.null(cycle$pair)) v$pair_evidence <- source_coordination_evidence(cycle, fmt)
+    coverage_block <- cycle$kind == "catalog" && identical(cycle$coverage$decision, "block")
+    if (coverage_block) { v$decision <- "block"; v$classification <- "breaking"; v$kind <- "catalog_coverage" }
+    if (v$decision == "block") {
+      status <- "incompatible_content"; plan <- if (reused) "state_validation_failed" else "candidate_stored"
+    } else if (accepted) {
+      status <- source_update_classify_representation(if (reused) "accepted_304" else "accepted_200",
+        obs$context$effective_identity$sha256, if (reused) NULL else obs$content$sha256, obs$baseline)$status
+      plan <- "content_validated"
+    } else {
+      status <- if (identical(cycle$pair$decision, "block")) "incompatible_content" else
+        if (isTRUE(obs$metadata_changed)) "metadata_changed" else "indeterminate"
+      plan <- if (reused) "check_finished" else "candidate_stored"
+    }
+  }
+  reasons <- obs$reason_codes
+  if (cycle$kind == "pair") reasons <- unique(c(if (accepted) "joint_accepted" else "joint_acceptance_pending",
+    if (!is.null(cycle$pair)) paste0("pair_", cycle$pair$classification), setdiff(reasons, "joint_acceptance_pending")))
+  if (!is.null(cycle$coverage)) reasons <- unique(c(paste0("coverage_", cycle$coverage$classification),
+    cycle$coverage$issues$code, reasons))
+  candidate <- if (is.null(obs$content) || obs$transport$outcome == "not_modified" || status == "metadata_changed") NULL else
+    list(identity_sha256 = obs$context$effective_identity$sha256, sha256 = obs$content$sha256)
+  core <- source_update_result(status, metadata_changed = obs$metadata_changed, redirected = obs$redirected,
+    reason_codes = reasons, retryable = obs$retryable, baseline = obs$baseline,
+    candidate = candidate, validation = v, error = obs$error)
+  obs[names(core)[!names(core) %in% c("transport", "persistence")]] <- core[!names(core) %in% c("transport", "persistence")]
+  obs["planned_event_type"] <- list(plan)
+  obs
+}
+
+source_coordination_authorize <- function(cycle, observation, check_id) {
+  source_coordination_validate(cycle)
+  fmt <- observation$context$effective_identity$descriptor$representation
+  if (!identical(cycle$check_id, check_id) || !is.null(cycle$error) ||
+      !identical(observation, source_coordination_terminal(cycle, fmt))) source_update_abort("invalid_coordination_resolution")
+  invisible(TRUE)
+}
+
+# Check reciprocal logical evidence AND locate both actual acceptance records.
+# A single accepted record, or matching bytes from different checks, is not a
+# jointly persisted baseline. Later check_finished events do not erase proof.
+source_coordination_baseline <- function(cycle, chains) {
+  if (cycle$kind != "pair" || any(vapply(cycle$observations, is.null, logical(1)))) return(FALSE)
+  contents <- lapply(names(chains), function(fmt) {
+    g <- cycle$observations[[fmt]]$context$state_revision %||% 0L
+    if (!g || length(chains[[fmt]]) < g) NULL else chains[[fmt]][[g]]$state_after$validated_content
+  })
+  names(contents) <- names(chains)
+  if (length(contents) != 2L || any(vapply(contents, is.null, logical(1)))) return(FALSE)
+  evidence <- lapply(contents, function(x) x$validation$pair_evidence)
+  if (any(vapply(evidence, is.null, logical(1)))) return(FALSE)
+  common <- c("check_id", "classification", "decision", "contract_id", "contract_version", "contract_sha256", "registry_revision", "comparison")
+  for (fmt in c("json", "csv")) {
+    p <- evidence[[fmt]]; partner <- if (fmt == "json") "csv" else "json"; q <- evidence[[partner]]
+    self <- c("representation", "requested_identity_sha256", "effective_identity_sha256", "content_sha256")
+    if (!all(c(common, self, "partner") %in% names(p)) || p$classification != "consistent_under_projection" ||
+        !p$decision %in% c("allow", "warn") || !identical(p$representation, fmt) ||
+        !identical(p$effective_identity_sha256, cycle$observations[[fmt]]$context$effective_identity$sha256) ||
+        !identical(p$content_sha256, contents[[fmt]]$sha256) ||
+        !identical(source_canonical_json(p[common]), source_canonical_json(q[common])) ||
+        !identical(source_canonical_json(p$partner), source_canonical_json(q[self]))) return(FALSE)
+    proof <- Filter(function(r) identical(r$event$check_id, p$check_id) && r$event$type == "content_validated" &&
+      identical(r$event$content_sha256, p$content_sha256) &&
+      identical(source_canonical_json(r$state_after$validated_content$validation$pair_evidence), source_canonical_json(p)), chains[[fmt]])
+    if (length(proof) != 1L) return(FALSE)
+  }
+  TRUE
+}
+
+source_coordination_assess <- function(cycle, baseline = FALSE) {
+  observations <- Filter(Negate(is.null), cycle$observations)
+  statuses <- vapply(observations, function(o) o$status, character(1))
+  status <- "indeterminate"; reason <- "joint_acceptance_pending"; retryable <- FALSE
+  if (!is.null(cycle$error)) { status <- cycle$error$status; reason <- cycle$error$code } else {
+    failures <- c("blocked", "check_failed", "incompatible_content", "source_unavailable")
+    hit <- failures[failures %in% statuses]
+    if (length(hit)) {
+      status <- hit[[1L]]
+      selected <- observations[statuses == status]
+      reason <- unique(unlist(lapply(selected, `[[`, "reason_codes"), use.names = FALSE))
+      retryable <- any(vapply(selected, function(o) isTRUE(o$retryable), logical(1)))
+    } else if (identical(cycle$pair$decision, "block") || identical(cycle$coverage$decision, "block")) {
+      status <- "incompatible_content"; reason <- if (cycle$kind == "pair") "pair_inconsistent" else "coverage_blocked"
+    } else if (source_coordination_accepted(cycle)) {
+      terminal <- lapply(names(observations), function(fmt) source_coordination_terminal(cycle, fmt))
+      states <- vapply(terminal, `[[`, character(1), "status")
+      status <- if (cycle$kind == "catalog") states[[1L]] else if (!baseline) "initialized" else
+        if ("content_changed" %in% states) "content_changed" else
+        if (all(states == "content_unchanged")) "content_unchanged" else "not_modified"
+      reason <- if (cycle$kind == "pair") "joint_accepted" else "catalog_accepted"
+    } else if (length(observations) == length(cycle$observations) &&
+        all(vapply(observations, function(o) identical(o$transport$method, "HEAD"), logical(1))) &&
+        any(vapply(observations, function(o) isTRUE(o$metadata_changed), logical(1)))) {
+      status <- "metadata_changed"; reason <- "head_metadata_changed"
+    }
+  }
+  warning <- identical(cycle$pair$decision, "warn") || identical(cycle$coverage$decision, "review")
+  list(status = status, content_changed = switch(status, content_changed = TRUE, content_unchanged = FALSE, NA),
+    severity = if (status %in% c("blocked", "check_failed", "incompatible_content", "source_unavailable")) "error" else
+      if (warning) "warning" else "normal", reason_codes = reason, retryable = retryable)
+}
+
+source_coordination_prepare <- function(config, cycle, lock, confirmed = function(fmt, receipt) NULL) {
+  assert_source_lock(config, cycle$source_id, lock)
+  prepared <- list(); chains <- list(); failures <- list()
+  # Keep inspecting the partner after a known pre-write block, so a historical
+  # receipt is not lost merely because the other generation is stale/corrupt.
+  for (fmt in names(cycle$observations)) if (!is.null(cycle$observations[[fmt]])) tryCatch({
+    obs <- source_coordination_terminal(cycle, fmt)
+    chains[[fmt]] <- read_source_revisions(config, obs$context$effective_identity)
+    p <- source_persistence_prepare(config, obs, cycle$check_id, lock, resolution = cycle)
+    prepared[[fmt]] <- p
+    if (!is.null(p$receipt)) confirmed(fmt, p$receipt)
+  }, source_state_block = function(e) failures[[length(failures) + 1L]] <<- e)
+  if (length(failures)) stop(failures[[1L]])
+  pending <- vapply(prepared, function(p) is.null(p$receipt), logical(1))
+  for (fmt in names(prepared)) {
+    p <- prepared[[fmt]]
+    if (any(pending)) {
+      # Confirm both heads after preparation, before either new commit. The
+      # borrowed lock may also be used by the caller's composition primitives.
+      current <- read_source_revisions(config, p$identity)
+      head <- if (length(current)) current[[length(current)]]$record_sha256 else NULL
+      generation <- if (pending[[fmt]]) p$generation else p$receipt$state_revision
+      checksum <- if (pending[[fmt]]) p$head_sha256 else p$receipt$record_sha256
+      if (length(current) != generation || !identical(head, checksum)) source_state_block("stale_state_revision")
+      source_persistence_require_content(config, p$state_after)
+    }
+  }
+  list(prepared = prepared, baseline = source_coordination_baseline(cycle, chains))
+}
+
+source_coordination_result <- function(cycle, assessment, outcomes, failure = NULL) {
+  states <- vapply(outcomes, `[[`, character(1), "outcome")
+  committed <- states == "committed"
+  outcome <- if (all(committed)) "committed" else if (any(committed)) "partial" else
+    if ("uncertain" %in% states) "uncertain" else if ("failed" %in% states) "failed" else "not_attempted"
+  result <- assessment
+  failed <- !is.null(failure) || any(states %in% c("failed", "uncertain")) ||
+    any(vapply(outcomes, function(p) !is.null(p$error), logical(1)))
+  if (failed) {
+    result$status <- if (!any(committed) && all(states == "not_attempted")) "blocked" else "check_failed"
+    result$content_changed <- NA; result$severity <- "error"
+    result$reason_codes <- unique(c(failure$code, unlist(lapply(outcomes, function(p) c(p$reason_codes, p$error$code)), use.names = FALSE)))
+    result$retryable <- result$status == "blocked" && any(result$reason_codes %in% c("lock_busy", "stale_state_revision"))
+  }
+  representations <- stats::setNames(lapply(names(outcomes), function(fmt) list(observation = cycle$observations[[fmt]],
+    terminal = source_coordination_terminal(cycle, fmt), persistence = outcomes[[fmt]])), names(outcomes))
+  c(list(result_version = 1L, source_id = cycle$source_id, source_role = cycle$source_role, check_id = cycle$check_id,
+    registry_revision = cycle$registry_revision, assessment = assessment, representations = representations,
+    pair = cycle$pair, coverage = cycle$coverage,
+    joint_acceptance = list(accepted = source_coordination_accepted(cycle),
+      baseline_confirmed = cycle$kind == "pair" && source_coordination_accepted(cycle) && all(committed)),
+    persistence = list(outcome = outcome, representations = outcomes, error = failure)), result)
+}
+
+source_coordination_persist <- function(config, cycle, lock = NULL, hooks = list(),
+                                       clock = source_state_now, id = source_state_id) {
+  source_coordination_validate(cycle)
+  source_update_object(hooks, c("json", "csv"))
+  outcomes <- lapply(cycle$observations, function(o) source_persistence_outcome("not_attempted",
+    code = if (is.null(o)) "representation_absent" else NULL))
+  assessment <- source_coordination_assess(cycle)
+  if (!is.null(cycle$error) || assessment$status == "blocked" || all(vapply(cycle$observations, is.null, logical(1)))) {
+    return(source_coordination_result(cycle, assessment, outcomes))
+  }
+  primary <- NULL; failure <- NULL
+  tryCatch({
+    tryCatch(with_source_lock(config, cycle$source_id, function(held) {
+      withCallingHandlers({
+        prepared <- source_coordination_prepare(config, cycle, held, function(fmt, receipt) {
+          outcomes[[fmt]] <<- source_persistence_outcome("committed", receipt, code = "already_committed")
+        })
+        assessment <<- source_coordination_assess(cycle, prepared$baseline)
+        for (fmt in names(prepared$prepared)) {
+          p <- prepared$prepared[[fmt]]
+          if (!is.null(p$receipt)) next
+          outcomes[[fmt]] <<- source_persistence_commit(config, p, held, hooks[[fmt]] %||% list())
+          if (outcomes[[fmt]]$outcome != "committed" || !is.null(outcomes[[fmt]]$error)) break
+        }
+      }, error = function(e) primary <<- e)
+    }, lock = lock, clock = clock, id = id), error = function(e) stop(if (is.null(primary)) e else primary))
+  }, source_state_block = function(e) failure <<- list(kind = "persistence", code = e$code))
+  source_coordination_result(cycle, assessment, outcomes, failure)
 }
