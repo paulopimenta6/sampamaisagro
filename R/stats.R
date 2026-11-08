@@ -1,3 +1,68 @@
+#' Summarize retained proximity pairs by origin, metric and direction
+#'
+#' All counts describe the rows supplied in each `origin_id`, `metric_id` and
+#' `direction` stratum. Distance summaries use only finite `distance_m` values,
+#' with quantiles of type 7 and IQR equal to P75 minus P25. Without a finite
+#' distance, every distance summary is `NA`. Missing radius flags are not counted
+#' as inside the radius; `no_raio` depends exclusively on `within_radius`.
+#'
+#' `calculate_proximity()` retains pairs inside the radius OR in the selected
+#' top-k. If the supplied table has been further restricted to top-k, it need not
+#' contain every equipment inside the radius. This function does not infer pairs
+#' discarded before selection; network failures belong to routing diagnostics.
+#'
+#' These are descriptions of selected pairs, not automatically the accessibility
+#' distribution of Sao Paulo's population. Repeated rows across metrics are not
+#' independent observations. Interpret each metric by its operational definition.
+#' For `fastest` network paths, ranking uses modeled time, while `distance_m`
+#' remains the length of the selected path. Origins, metrics and directions are
+#' never pooled here.
+#'
+#' @param results Long-form retained proximity results. Requires `origin_id`,
+#'   `metric_id`, `direction`, `equipment_id`, `distance_m` and `within_radius`.
+#'   The optional presentation column `metric_label` defaults to `metric_id`.
+#' @return A data frame with one row per stratum, retained/finite/nonfinite pair
+#'   counts, distinct equipment, radius counts and distance summaries in metres.
+#'   Empty input returns zero rows with the same columns and types.
+#' @examples
+#' \dontrun{
+#' equipment <- load_equipment_data()
+#' list_equipment_groups(equipment)
+#' origins <- resolve_origins(data.frame(latitude = -23.55, longitude = -46.63))
+#' results <- calculate_proximity(origins$valid, equipment, modes = character())
+#' proximity_summary(results)
+#' create_static_map(results)
+#' render_proximity_report(results, "relatorio.html", origins$valid, equipment)
+#' }
+#' @export
+proximity_summary <- function(results) {
+  if (!nrow(results)) return(data.frame(
+    origin_id = character(), metric_id = character(), direction = character(), metric_label = character(),
+    pares_retidos = integer(), pares_distancia_valida = integer(), pares_distancia_ausente = integer(),
+    equipamentos = integer(), no_raio = integer(), minimo_m = numeric(), p25_m = numeric(),
+    mediana_m = numeric(), p75_m = numeric(), iqr_m = numeric(), p90_m = numeric(), maximo_m = numeric()))
+  required <- c("origin_id", "metric_id", "direction", "equipment_id", "distance_m", "within_radius")
+  missing_columns <- setdiff(required, names(results))
+  if (length(missing_columns)) stop("Colunas obrigatorias ausentes: ", paste(missing_columns, collapse = ", "))
+  if (!"metric_label" %in% names(results)) results$metric_label <- results$metric_id
+  grouped <- dplyr::group_by(results,
+    dplyr::across(dplyr::all_of(c("origin_id", "metric_id", "direction"))))
+  summary <- dplyr::group_modify(grouped, function(data, key) {
+    distances <- data$distance_m[is.finite(data$distance_m)]
+    quantiles <- if (length(distances)) {
+      stats::quantile(distances, c(0, 0.25, 0.5, 0.75, 0.9, 1), names = FALSE, type = 7)
+    } else rep(NA_real_, 6L)
+    data.frame(metric_label = as.character(data$metric_label[[1]]),
+      pares_retidos = nrow(data), pares_distancia_valida = length(distances),
+      pares_distancia_ausente = nrow(data) - length(distances),
+      equipamentos = dplyr::n_distinct(data$equipment_id), no_raio = sum(data$within_radius %in% TRUE),
+      minimo_m = quantiles[1], p25_m = quantiles[2], mediana_m = quantiles[3],
+      p75_m = quantiles[4], iqr_m = quantiles[4] - quantiles[2],
+      p90_m = quantiles[5], maximo_m = quantiles[6], stringsAsFactors = FALSE)
+  })
+  as.data.frame(dplyr::ungroup(summary))
+}
+
 #' Aggregate equipment into a regular hexagonal grid
 #'
 #' @param equipment Canonical equipment data.

@@ -82,7 +82,13 @@ report_table(provenance)
 Os resumos abaixo descrevem apenas os pares retidos: dentro do raio **ou** entre
 os k primeiros de cada origem/métrica. Eles não estimam a distribuição de acesso
 da população de São Paulo. A mesma instalação pode aparecer em várias métricas;
-não some as linhas para contar estabelecimentos. Os tempos de rede são modelados,
+essas linhas não são observações independentes. Não some as linhas para contar
+estabelecimentos. Cada métrica tem sua própria definição operacional.
+Se a tabela fornecida sofreu um recorte adicional por top-k, ela pode não conter
+todos os equipamentos no raio. Não recuperamos pares descartados antes da seleção;
+falhas de rede pertencem aos diagnósticos de roteamento existentes.
+Para trajetos `fastest`, o ranking usa tempo modelado, enquanto a distância continua
+sendo o comprimento do trajeto selecionado. Os tempos de rede são modelados,
 sem trânsito em tempo real, sem avaliação de calçadas e sem garantia de acessibilidade.
 
 ```{r map, fig.cap="Localização dos registros selecionados e da origem aproximada. Mapa gerado com dados locais."}
@@ -98,28 +104,33 @@ if (!is.null(equipment) && nrow(equipment)) {
 ```
 
 ```{r summary}
-summary_table <- results |>
-  dplyr::group_by(metric_id, direction) |>
-  dplyr::summarise(
-    pares = dplyr::n(),
-    mediana_m = stats::median(distance_m, na.rm = TRUE),
-    p90_m = stats::quantile(distance_m, 0.90, na.rm = TRUE),
-    dentro_raio = sum(within_radius, na.rm = TRUE),
-    .groups = "drop"
-  )
-summary_table$metric_id <- abbreviate_metric(summary_table$metric_id)
-summary_table$direction <- abbreviate_metric(summary_table$direction)
-report_table(summary_table, digits = 1)
+summary_table <- sampamaisrural::proximity_summary(results)
+shown_summary <- summary_table
+shown_summary$metric_id <- abbreviate_metric(shown_summary$metric_id)
+shown_summary$direction <- abbreviate_metric(shown_summary$direction)
+keys <- c("origin_id", "metric_id", "direction")
+report_table(shown_summary[, c(keys, "pares_retidos", "pares_distancia_valida",
+  "pares_distancia_ausente", "equipamentos", "no_raio")],
+  col.names = c("Origem", "Metrica", "Sentido", "Retidos", "n valido", "Sem distancia", "Equipamentos", "No raio"),
+  caption = "Contagens dos pares retidos, por origem, metrica e sentido.")
+report_table(shown_summary[, c(keys, "pares_distancia_valida", "minimo_m", "p25_m",
+  "mediana_m", "p75_m", "iqr_m", "p90_m", "maximo_m")], digits = 1,
+  col.names = c("Origem", "Metrica", "Sentido", "n valido", "Min", "P25", "Mediana", "P75", "IQR", "P90", "Max"),
+  caption = "Distancias finitas em metros; n valido e o denominador observacional dos quantis.")
 ```
 
-```{r chart, fig.cap="Distribuicao das distancias segundo a metrica."}
+```{r chart, fig.cap="ECDF por origem, metrica e sentido. O n valido de cada curva consta nas tabelas acima."}
 page_break()
-if (nrow(results)) {
-  print(ggplot2::ggplot(results, ggplot2::aes(distance_m / 1000, colour = metric_id)) +
+valid_results <- results[is.finite(results$distance_m), , drop = FALSE]
+if (nrow(valid_results)) {
+  print(ggplot2::ggplot(valid_results, ggplot2::aes(distance_m / 1000, colour = metric_id,
+    group = interaction(origin_id, metric_id, direction))) +
     ggplot2::stat_ecdf(geom = "step", na.rm = TRUE) +
+    ggplot2::facet_grid(direction ~ origin_id) +
     ggplot2::theme_minimal() +
-    ggplot2::labs(x = "Distancia (km)", y = "Proporcao acumulada", colour = "Metrica"))
-}
+    ggplot2::labs(x = "Distancia (km)", y = "Proporcao acumulada", colour = "Metrica",
+      caption = "Apenas distancias finitas dos pares retidos; n valido por curva nas tabelas de resumo."))
+} else cat("Nenhuma distancia finita nos pares retidos para construir a ECDF.\n")
 ```
 
 ```{r agreement-page}

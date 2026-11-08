@@ -96,16 +96,6 @@ app_ui <- function(config, available_modes = character()) {
       "SampaMaisAgro \u00b7 dados Sampa+Rural / Prefeitura de S\u00e3o Paulo e parceiros \u00b7 pesquisa acad\u00eamica \u00b7 execu\u00e7\u00e3o offline"))
 }
 
-proximity_summary <- function(results) {
-  if (!nrow(results)) return(data.frame())
-  results |>
-    dplyr::group_by(origin_id, metric_label, direction) |>
-    dplyr::summarise(equipamentos = dplyr::n_distinct(equipment_id),
-      no_raio = sum(within_radius), minimo_m = min(distance_m),
-      mediana_m = stats::median(distance_m), p90_m = as.numeric(stats::quantile(distance_m, 0.9)),
-      maximo_m = max(distance_m), .groups = "drop")
-}
-
 proximity_agreement <- function(results) {
   if (!nrow(results)) return(data.frame())
   dplyr::bind_rows(lapply(split(results, results$origin_id), function(x) {
@@ -233,10 +223,14 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
     if (!nrow(result)) return(NULL)
     shown <- result[result$metric_id == input$map_metric, ]
     if (!nrow(shown)) return(NULL)
+    summary <- proximity_summary(shown)
+    if (nrow(summary) != 1L) return(shiny::p("Consulte o resumo por origem e sentido na aba Estat\u00edsticas."))
+    minimum <- if (is.finite(summary$minimo_m)) sprintf("%.0f m", summary$minimo_m) else "N\u00e3o dispon\u00edvel"
     shiny::div(class = "kpi-grid",
-      shiny::div(class = "kpi", shiny::strong(length(unique(shown$equipment_id))), shiny::span("equipamentos selecionados")),
-      shiny::div(class = "kpi", shiny::strong(sum(shown$within_radius)), shiny::span("pares origem/equipamento no raio")),
-      shiny::div(class = "kpi", shiny::strong(sprintf("%.0f m", min(shown$distance_m))), shiny::span("menor dist\u00e2ncia")))
+      shiny::div(class = "kpi", shiny::strong(summary$equipamentos), shiny::span("equipamentos selecionados")),
+      shiny::div(class = "kpi", shiny::strong(summary$no_raio), shiny::span("pares origem/equipamento no raio")),
+      shiny::div(class = "kpi", shiny::strong(minimum),
+        shiny::span(sprintf("menor dist\u00e2ncia \u00b7 n v\u00e1lido = %d", summary$pares_distancia_valida))))
   })
   output$proximity_map <- leaflet::renderLeaflet(make_leaflet_map(data.frame(),
     equipment = validated$eligible, context = context))
@@ -286,9 +280,11 @@ app_server <- function(input, output, session, config, equipment, graphs, contex
   output$distance_plot <- shiny::renderPlot({
     result <- result_state()
     shiny::validate(shiny::need(nrow(result) > 0, "Fa\u00e7a uma consulta para gerar este gr\u00e1fico."))
-    shown <- result[result$metric_id == input$map_metric, ]
+    shown <- result[result$metric_id == input$map_metric & is.finite(result$distance_m), ]
+    shiny::validate(shiny::need(nrow(shown) > 0, "N\u00e3o h\u00e1 dist\u00e2ncias finitas para a m\u00e9trica selecionada."))
     ggplot2::ggplot(shown, ggplot2::aes(distance_m / 1000)) +
       ggplot2::geom_histogram(bins = 25, fill = "#2c7380", colour = "white") +
+      ggplot2::facet_grid(direction ~ origin_id) +
       ggplot2::theme_minimal() + ggplot2::labs(x = "Dist\u00e2ncia (km)", y = "Pares selecionados",
         caption = "Subconjunto: dentro do raio OU top-k, para a m\u00e9trica exibida no mapa.")
   })

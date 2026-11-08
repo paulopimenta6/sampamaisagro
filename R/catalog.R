@@ -8,6 +8,35 @@ equipment_groups <- c(
   outros = "Outros registros da fonte"
 )
 
+#' List analytical groups derived by Sampa+Agro locally
+#'
+#' These analytical groups are derived by Sampa+Agro using the project's
+#' classification rules in `classify_equipment()`. They do not necessarily
+#' correspond to the official categories declared by the Sampa+Rural source.
+#' A record may belong to more than one group, so group counts must not be summed
+#' to obtain the total number of records in the supplied base.
+#'
+#' Listing uses no network access, downloads or writes.
+#'
+#' @param equipment Optional canonical equipment data. When supplied, include
+#'   total and mappable profile counts using the existing group coverage rules.
+#' @param config Project configuration, used only when equipment is supplied.
+#' @return A data frame with stable `group_id` and readable `label` columns.
+#'   With equipment, also includes `registros` and `mapeaveis`. An empty supplied
+#'   base gives zero counts; omitting the base gives only identifiers and labels.
+#' @export
+list_equipment_groups <- function(equipment = NULL, config = read_sampa_config()) {
+  catalog <- data.frame(group_id = names(equipment_groups), label = unname(equipment_groups),
+    stringsAsFactors = FALSE)
+  if (!is.null(equipment)) {
+    coverage <- group_coverage(equipment, config)
+    index <- match(catalog$label, coverage$grupo)
+    catalog$registros <- coverage$registros[index]
+    catalog$mapeaveis <- coverage$mapeaveis[index]
+  }
+  catalog
+}
+
 classify_equipment <- function(data) {
   for (field in c("subcategory", "qualifications", "accessibility_reported")) {
     if (!field %in% names(data)) data[[field]] <- rep(NA_character_, nrow(data))
