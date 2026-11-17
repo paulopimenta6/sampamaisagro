@@ -7,13 +7,67 @@
 metric_agreement(results, k = 10L)
 }
 \arguments{
-\item{results}{Long-form result returned by \code{calculate_proximity()}.}
+\item{results}{Retained long-form results from \code{calculate_proximity()}, with
+\code{origin_id}, \code{equipment_id}, \code{metric_id}, \code{direction}, numeric \code{distance_m}
+and numeric \code{rank}. Empty input returns a zero-row table with the same schema.}
 
-\item{k}{Cut-off used for top-k set agreement.}
+\item{k}{Positive integer cut-off used for top-k set overlap.}
 }
 \value{
-Pairwise rank correlations, Bland-Altman summaries and Jaccard overlap.
+A data frame with origin and separate metric/direction identifiers,
+availability and common-pair counts, coverage percentages, rank correlations,
+top-k Jaccard and \code{k}, valid distance-pair count, signed difference summaries
+in metres, and descriptive lower/upper limits in metres.
 }
 \description{
-Compare distance metrics without treating one as a gold standard
+Separates three questions: preservation of ordering (Spearman/Kendall),
+overlap of top-k selections (Jaccard), and paired differences in metres.
+High rank correlations do not imply small absolute distance differences.
+}
+\details{
+All pairing uses exactly \code{origin_id + equipment_id}, within one origin and
+one metric/direction on each side. Duplicate equipment within an origin,
+metric and direction cause an error rather than a Cartesian join. Identifiers
+must be present and nonblank. Metric identifiers and directions are returned
+separately as \code{metric_a}, \code{direction_a}, \code{metric_b} and \code{direction_b}.
+
+\code{n_a} and \code{n_b} count distinct equipment available in the supplied sets;
+\code{n_common} counts their intersection, regardless of missing ranks/distances.
+\code{common_pct_a} and \code{common_pct_b} divide this intersection by the respective
+set size, returning \code{NA} for a zero denominator. An origin observed on either
+side is included; an absent set has size zero. This describes availability in
+the retained input, not unobserved equipment or pre-selection routing failures.
+
+\code{n_rank_common} counts common pairs with finite, positive ranks on both sides.
+Spearman and Kendall use those existing ranks, with ties preserved. They are
+\code{NA} with fewer than two such pairs or a constant rank vector; no p-values are
+calculated. For \code{fastest} network paths, ranks were determined by modeled time:
+these correlations compare orderings by time, not distance correlations.
+
+Top-k sets contain equipment with finite, positive \code{rank <= k}, independently
+of the paired intersection. Jaccard is intersection size divided by union
+size: disjoint nonempty selections give zero, identical nonempty selections
+give one, and two empty selections give \code{NA}. The requested \code{k} is returned.
+
+\code{difference_m = distance_m_a - distance_m_b}, explicitly A minus B. Only common
+pairs with both distances finite enter \code{n_distance_common} and the mean,
+median, P25, P75, IQR (P75 minus P25), and sample SD of differences. Quantiles
+use type 7. No valid pair gives \code{NA} for all difference summaries. One valid
+pair can be summarized, but SD and limits remain \code{NA}. For \code{fastest}, these
+differences compare lengths of routes chosen by modeled time, without reranking.
+
+Limits are mean difference plus/minus 1.96 sample SD only with at least two
+valid distance pairs. They are descriptive Bland-Altman summaries, not
+confidence intervals or evidence of agreement. Interpretation depends on the
+distribution of differences; heteroscedasticity and spatial dependence may
+compromise it. Metrics are distinct operational definitions, not a gold
+standard. No formal Bland-Altman test or causal inference is performed.
+Before generating pairs, distinct metric/direction combinations are sorted
+canonically by character \code{metric_id}, then \code{direction}, using radix ordering.
+A precedes B in that order, independently of the data frame's row order.
+Signed differences always use A minus B, so their sign is reproducible for
+the same data. A and B label only the calculation's orientation, without
+privileging either metric. Explicit calls to \code{metric_pair_agreement(a, b, k)}
+retain the caller's argument order; deliberately reversing them reverses the
+signed differences.
 }

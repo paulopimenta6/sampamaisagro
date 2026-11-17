@@ -137,25 +137,48 @@ if (nrow(valid_results)) {
 page_break()
 ```
 
-# Concordancia entre metricas
+# Comparacao entre metricas
+
+Spearman e Kendall descrevem a preservacao da ordenacao entre equipamentos comuns
+com ranks validos nas duas metricas. Jaccard compara os conjuntos top-k completos,
+inclusive equipamentos presentes em apenas uma selecao. As coberturas usam os
+equipamentos disponiveis nos conjuntos retidos, sem reconstruir falhas anteriores
+a selecao. **Spearman/Kendall altos nao implicam pequenas diferencas absolutas.**
+Uma metrica pode preservar o ranking e produzir distancias sistematicamente maiores.
+Para `fastest`, a ordenacao usa tempo modelado; as diferencas em metros comparam
+os comprimentos das rotas escolhidas pelo criterio de menor tempo.
+
+As diferencas pareadas usam **A menos B** para o mesmo par origem/equipamento,
+somente quando ambas as distancias sao finitas. Valores positivos indicam maior
+distancia em A. Os limites sao media da diferenca mais/menos 1,96 DP, com pelo
+menos dois pares validos. Sao resumos descritivos, nao intervalos de confianca
+nem conclusao automatica de concordancia. Sua interpretacao depende da distribuicao
+das diferencas; heterocedasticidade e dependencia espacial podem compromete-la.
+As metricas representam definicoes operacionais distintas, sem padrao-ouro.
 
 ```{r agreement}
 agreement <- tryCatch(proximity_agreement(results), error = function(e) data.frame(observacao = conditionMessage(e)))
 if (nrow(agreement) && "metric_a" %in% names(agreement)) {
   agreement$metric_a <- abbreviate_metric(agreement$metric_a)
   agreement$metric_b <- abbreviate_metric(agreement$metric_b)
-  rank_columns <- intersect(c("origin_id", "metric_a", "metric_b", "n_common",
-    "spearman_rho", "kendall_tau", "top_k_jaccard"), names(agreement))
-  difference_columns <- intersect(c("origin_id", "metric_a", "metric_b", "mean_difference_m",
-    "limits_lower_m", "limits_upper_m"), names(agreement))
+  agreement$direction_a <- abbreviate_metric(agreement$direction_a)
+  agreement$direction_b <- abbreviate_metric(agreement$direction_b)
+  keys <- c("origin_id", "metric_a", "direction_a", "metric_b", "direction_b")
+  rank_columns <- c(keys, "n_a", "n_b", "n_common", "common_pct_a", "common_pct_b",
+    "n_rank_common", "spearman_rho", "kendall_tau", "top_k_jaccard", "k")
+  difference_columns <- c(keys, "n_distance_common", "median_difference_m", "p25_difference_m",
+    "p75_difference_m", "iqr_difference_m", "mean_difference_m", "sd_difference_m",
+    "limits_lower_m", "limits_upper_m")
   rank_table <- agreement[, rank_columns, drop = FALSE]
-  names(rank_table) <- c("origem", "A", "B", "n", "rho", "tau", "Jaccard")[seq_along(rank_table)]
   difference_table <- agreement[, difference_columns, drop = FALSE]
-  names(difference_table) <- c("origem", "A", "B", "dif_m", "lim_inf_m", "lim_sup_m")[seq_along(difference_table)]
   report_table(rank_table, digits = 3,
-    caption = "Concordancia de ordenacao e dos conjuntos top-k.")
+    col.names = c("Origem", "A", "Sent. A", "B", "Sent. B", "n A", "n B", "Comuns",
+      "% A", "% B", "n ranks", "rho", "tau", "Jaccard", "k"),
+    caption = "Ordenacao, cobertura e sobreposicao top-k dos conjuntos retidos.")
   report_table(difference_table, digits = 1,
-    caption = "Diferencas pareadas e limites de concordancia (metros).")
+    col.names = c("Origem", "A", "Sent. A", "B", "Sent. B", "n dist.", "Mediana", "P25",
+      "P75", "IQR", "Media", "DP", "Lim. inf.", "Lim. sup."),
+    caption = "Diferencas pareadas A menos B e limites descritivos em metros; limites exigem pelo menos dois pares validos.")
 } else {
   report_table(agreement, digits = 3)
 }
