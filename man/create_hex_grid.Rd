@@ -24,5 +24,24 @@ create_hex_grid(
 An \code{sf} object with counts and density per square kilometre.
 }
 \description{
-Aggregate equipment into a regular hexagonal grid
+Converts point equipment into area data: \code{equipment_n} is the territorial
+count, \code{area_km2} is the clipped cell area and \code{density_km2} is count per km2.
+Cells without equipment remain as true zeros, including an empty equipment
+set when an external boundary is supplied. Only finite point coordinates are
+aggregated. Points outside the domain are not counted; points on shared or
+outer borders are assigned once, to the first intersecting cell in grid order.
+}
+\details{
+Scientific comparisons require a fixed boundary external to the equipment,
+reused across groups, categories, periods and equivalent scales. With
+\code{boundary = NULL}, the domain derives from the points and is exploratory;
+it is unsuitable for comparing distinct distributions. Clipped edge cells
+may have unequal positive areas and are retained. Counts are not automatically
+substituted by densities. Neither variable is per capita or population access.
+Group memberships can overlap, so group results are not additive.
+
+Moran analysis of this grid concerns area values after aggregation, not the
+original point pattern. Prespecify spatial scales (for example 1000, 2000 and
+5000 m) and interpret differences as sensitivity to spatial units/MAUP; do not
+select a scale by the smallest p-value or largest Moran I.
 }

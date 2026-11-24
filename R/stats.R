@@ -65,17 +65,40 @@ proximity_summary <- function(results) {
 
 #' Aggregate equipment into a regular hexagonal grid
 #'
+#' Converts point equipment into area data: `equipment_n` is the territorial
+#' count, `area_km2` is the clipped cell area and `density_km2` is count per km2.
+#' Cells without equipment remain as true zeros, including an empty equipment
+#' set when an external boundary is supplied. Only finite point coordinates are
+#' aggregated. Points outside the domain are not counted; points on shared or
+#' outer borders are assigned once, to the first intersecting cell in grid order.
+#'
+#' Scientific comparisons require a fixed boundary external to the equipment,
+#' reused across groups, categories, periods and equivalent scales. With
+#' `boundary = NULL`, the domain derives from the points and is exploratory;
+#' it is unsuitable for comparing distinct distributions. Clipped edge cells
+#' may have unequal positive areas and are retained. Counts are not automatically
+#' substituted by densities. Neither variable is per capita or population access.
+#' Group memberships can overlap, so group results are not additive.
+#'
+#' Moran analysis of this grid concerns area values after aggregation, not the
+#' original point pattern. Prespecify spatial scales (for example 1000, 2000 and
+#' 5000 m) and interpret differences as sensitivity to spatial units/MAUP; do not
+#' select a scale by the smallest p-value or largest Moran I.
+#'
 #' @param equipment Canonical equipment data.
 #' @param cell_size_m Approximate centre-to-centre cell size in metres.
 #' @param boundary Optional `sf` polygon limiting the grid.
 #' @param projected_crs Metric CRS used for tessellation.
 #' @return An `sf` object with counts and density per square kilometre.
+#' @md
 #' @export
 create_hex_grid <- function(equipment, cell_size_m = 2000, boundary = NULL, projected_crs = 31983) {
   valid <- equipment[is.finite(equipment$longitude) & is.finite(equipment$latitude), , drop = FALSE]
-  if (!nrow(valid)) stop("Nao ha equipamentos com coordenadas validas.")
-  pts <- sf::st_as_sf(valid, coords = c("longitude", "latitude"), crs = 4326, remove = FALSE)
-  pts_m <- sf::st_transform(pts, projected_crs)
+  if (!nrow(valid) && is.null(boundary)) stop("Nao ha equipamentos com coordenadas validas.")
+  pts_m <- if (nrow(valid)) {
+    pts <- sf::st_as_sf(valid, coords = c("longitude", "latitude"), crs = 4326, remove = FALSE)
+    sf::st_transform(pts, projected_crs)
+  } else sf::st_sf(geometry = sf::st_sfc(crs = projected_crs))
   if (is.null(boundary)) {
     boundary_m <- sf::st_as_sfc(sf::st_bbox(pts_m))
     boundary_m <- sf::st_buffer(boundary_m, cell_size_m)
@@ -87,14 +110,143 @@ create_hex_grid <- function(equipment, cell_size_m = 2000, boundary = NULL, proj
   cells <- suppressWarnings(sf::st_intersection(cells, sf::st_union(boundary_m)))
   cells <- suppressWarnings(sf::st_collection_extract(cells, "POLYGON"))
   cells <- cells[as.numeric(sf::st_area(cells)) > 0, , drop = FALSE]
-  joined <- sf::st_join(pts_m, cells, join = sf::st_within, left = TRUE)
-  counts <- as.data.frame(table(joined$hex_id), stringsAsFactors = FALSE)
-  names(counts) <- c("hex_id", "equipment_n")
-  cells <- dplyr::left_join(cells, counts, by = "hex_id")
-  cells$equipment_n[is.na(cells$equipment_n)] <- 0L
+  candidates <- sf::st_intersects(pts_m, cells)
+  assigned <- vapply(candidates, function(i) if (length(i)) i[[1L]] else NA_integer_, integer(1))
+  cells$equipment_n <- tabulate(assigned[!is.na(assigned)], nbins = nrow(cells))
   cells$area_km2 <- as.numeric(sf::st_area(cells)) / 1e6
   cells$density_km2 <- cells$equipment_n / cells$area_km2
   sf::st_transform(cells, 4326)
+}
+
+#' Global Moran I for observed area values with Monte Carlo permutation inference
+#'
+#' This is area-data analysis after point equipment has been aggregated by
+#' `create_hex_grid()`, not a direct analysis of the original point pattern.
+#' Scientific comparisons require a fixed external boundary and the same domain
+#' across groups, categories, periods and equivalent scales. A point-derived
+#' domain (`boundary = NULL`) is only exploratory. Counts (`equipment_n`) and
+#' area intensity (`density_km2`) answer different questions; neither measures
+#' per-capita provision or population accessibility. The variable must be chosen
+#' explicitly, and counts are never converted to density here.
+#'
+#' Under the permutation null, the observed values (including zeros) are randomly
+#' reassigned among the fixed territorial cells while geometry and W remain
+#' unchanged. This is not random allocation of points in continuous space.
+#' The observed Moran I and rank-based permutation pseudo-p come directly from
+#' `spdep::moran.mc()`, with the requested alternative. The simulated distribution
+#' excludes the final observed statistic stored in that object's `res` vector.
+#' The observed I can be mathematically defined even when the permutation test
+#' has no contrast. A pseudo-p is returned only if the simulated null varies:
+#' a range no greater than `64 * .Machine$double.eps * max(1, max(abs(I_sim)))`
+#' is treated as numerical zero and causes an explicit error. This check uses
+#' only simulated values, not the observed I. A degenerate simulated null means
+#' the permutation test is uninformative for that configuration; it does not
+#' mean I is zero, that autocorrelation is absent, or a nonsignificant result.
+#'
+#' W defaults to Queen contiguity with binary weights. Rook contiguity and
+#' row-standardised weights can be requested explicitly. No distance-based
+#' neighbour selection is performed. The returned `listw` makes W inspectable;
+#' `cell_ids` gives its row order. Cells without neighbours are counted and kept:
+#' `zero.policy = TRUE` gives them zero spatial lag, and `adjust.n = FALSE` keeps
+#' the full number of cells in Moran's normalisation. Their observed values are
+#' not set to zero. A graph without any neighbour links is rejected. Nonfinite
+#' values, empty/invalid polygons, and constant variables are rejected without
+#' dropping cells or imputing zeros. With few distinct territorial allocations,
+#' the permutation space and inferential resolution are limited; this is not
+#' a general requirement to reduce `nsim`. The scientific default remains 999.
+#'
+#' Positive I describes similar values occurring nearby according to W; negative
+#' I describes contrasting values nearby. A result compatible with the null is
+#' insufficient evidence of global autocorrelation for this variable, domain,
+#' scale and W. Global Moran does not locate clusters, hot spots or local
+#' outliers, establish causality, population inequality or optimal facilities.
+#' Large-scale spatial trends/nonstationarity can also produce high I; it is
+#' not automatically pure local dependence. No detrending is performed.
+#'
+#' Results depend on territorial units and scale (MAUP). Prespecify scales and
+#' interpret comparisons as sensitivity, not a search for the smallest p-value
+#' or largest I. Clipped cell areas may differ. Overlapping analytical groups
+#' are not additive. This observed-value Moran is separate from residual Moran
+#' in `fit_spatial_count_model()`; no model is fitted or used here.
+#'
+#' The local seed is mandatory, recorded, and does not change the caller's random
+#' stream. Reproduction assumes the same cell order, RNG kind and software
+#' versions; the RNG kind and `spdep` version are returned.
+#'
+#' @param grid An `sf` table of nonempty valid POLYGON/MULTIPOLYGON cells with CRS.
+#' @param value_col Explicit name of the numeric, finite, nonconstant area variable.
+#' @param queen Use Queen contiguity (`TRUE`, default) or Rook (`FALSE`).
+#' @param style Weight style: binary `"B"` (default) or row-standardised `"W"`.
+#' @param nsim Positive integer number of permutations; scientific default 999.
+#' @param alternative `"two.sided"` (default), `"greater"` or `"less"`.
+#' @param seed Finite integer local seed; cannot be `NULL` or missing-valued.
+#' @return An inspectable list with `value_col`, `n_cells`, `n_zero`, `n_islands`,
+#'   `neighbour_rule`, `style`, `zero.policy`, `adjust.n`, `cell_ids`, `nsim`,
+#'   `seed`, `alternative`, `moran_i`, `pseudo_p`, `permutation_mean`,
+#'   `permutation_sd`, `permutation_values`, the original `test` object, `listw`,
+#'   `rng_kind` and `spdep_version`.
+#' @md
+#' @export
+global_moran <- function(grid, value_col, queen = TRUE, style = "B", nsim = 999L,
+                         alternative = "two.sided", seed = 1L) {
+  had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  if (had_seed) previous_seed <- get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  on.exit({
+    if (had_seed) assign(".Random.seed", previous_seed, envir = .GlobalEnv) else
+      if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) rm(".Random.seed", envir = .GlobalEnv)
+  }, add = TRUE)
+  if (!requireNamespace("spdep", quietly = TRUE)) stop("O pacote spdep e necessario para global_moran().")
+  if (!inherits(grid, "sf")) stop("grid deve ser um objeto sf poligonal.")
+  if (!nrow(grid)) stop("grid deve conter celulas territoriais.")
+  if (is.na(sf::st_crs(grid))) stop("grid deve ter CRS definido.")
+  if (any(!sf::st_geometry_type(grid) %in% c("POLYGON", "MULTIPOLYGON")) ||
+      any(sf::st_is_empty(grid)) || !all(sf::st_is_valid(grid) %in% TRUE)) {
+    stop("grid deve conter apenas poligonos validos e nao vazios.")
+  }
+  if (missing(value_col) || length(value_col) != 1L || !is.character(value_col) ||
+      is.na(value_col) || !nzchar(value_col) || !value_col %in% names(grid)) {
+    stop("Informe value_col explicitamente, como nome de uma variavel existente.")
+  }
+  values <- grid[[value_col]]
+  if (!is.numeric(values) || !is.null(dim(values))) stop("value_col deve ser uma variavel numerica.")
+  if (any(!is.finite(values))) stop("value_col contem NA, NaN ou Inf; nenhuma celula foi removida ou imputada.")
+  if (length(unique(values)) < 2L) stop("value_col deve ter variacao para calcular Moran I.")
+  if (length(queen) != 1L || !is.logical(queen) || is.na(queen)) stop("queen deve ser TRUE ou FALSE.")
+  style <- match.arg(style, c("B", "W"))
+  alternative <- match.arg(alternative, c("two.sided", "greater", "less"))
+  if (length(nsim) != 1L || !is.numeric(nsim) || !is.finite(nsim) ||
+      nsim < 1 || nsim != trunc(nsim) || nsim > .Machine$integer.max) stop("nsim deve ser um inteiro positivo.")
+  if (length(seed) != 1L || !is.numeric(seed) || !is.finite(seed) ||
+      seed != trunc(seed) || abs(seed) > .Machine$integer.max) stop("seed deve ser um inteiro finito e nao pode ser NULL.")
+  nsim <- as.integer(nsim)
+  seed <- as.integer(seed)
+  cell_ids <- if ("hex_id" %in% names(grid)) as.character(grid$hex_id) else rownames(grid)
+  if (anyNA(cell_ids) || any(!nzchar(trimws(cell_ids))) || anyDuplicated(cell_ids)) {
+    stop("Identificadores das celulas devem ser unicos e nao ausentes.")
+  }
+  neighbours <- spdep::poly2nb(grid, row.names = cell_ids, queen = queen)
+  n_islands <- sum(spdep::card(neighbours) == 0L)
+  if (n_islands == nrow(grid)) stop("Nao ha ligacoes de vizinhanca: Moran Global inviavel.")
+  listw <- spdep::nb2listw(neighbours, style = style, zero.policy = TRUE)
+
+  rng_kind <- RNGkind()
+  set.seed(seed)
+  test <- spdep::moran.mc(values, listw, nsim = nsim, zero.policy = TRUE,
+    alternative = alternative, na.action = stats::na.fail, spChk = FALSE, adjust.n = FALSE)
+  simulations <- test$res[seq_len(nsim)]
+  if (!is.finite(test$statistic) || any(!is.finite(simulations)) || !is.finite(test$p.value) ||
+      test$p.value < 0 || test$p.value > 1) stop("Teste de permutacao nao produziu resultados finitos validos.")
+  null_tolerance <- 64 * .Machine$double.eps * max(1, max(abs(simulations)))
+  if (max(simulations) - min(simulations) <= null_tolerance) {
+    stop("A distribuicao nula de Moran e degenerada: as permutacoes nao produzem variacao no indice para a estrutura espacial informada.")
+  }
+  list(value_col = value_col, n_cells = nrow(grid), n_zero = sum(values == 0), n_islands = n_islands,
+    neighbour_rule = if (queen) "queen" else "rook", style = style, zero.policy = TRUE, adjust.n = FALSE,
+    cell_ids = cell_ids, nsim = nsim, seed = seed, alternative = alternative,
+    moran_i = unname(test$statistic), pseudo_p = test$p.value,
+    permutation_mean = mean(simulations), permutation_sd = if (nsim > 1L) stats::sd(simulations) else NA_real_,
+    permutation_values = simulations, test = test, listw = listw,
+    rng_kind = rng_kind, spdep_version = as.character(utils::packageVersion("spdep")))
 }
 
 metric_pair_agreement <- function(a, b, k) {
