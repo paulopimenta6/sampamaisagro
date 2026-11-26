@@ -2,7 +2,7 @@
 
 Uma aplicação em **R + Shiny** para descobrir registros de agricultura e alimentação próximos de um CEP ou de coordenadas, individualmente ou em lote. Usa os [dados abertos do Sampa+Rural](https://sampamaisrural.prefeitura.sp.gov.br/dados) e, após a preparação, funciona sem internet.
 
-Comece pelo [guia passo a passo](GUIA_LUDICO.md). Para pesquisa, leia o [protocolo](PROTOCOL.md) e o [dicionário](CODEBOOK.md).
+O [manual de formação do Sampa+Agro](docs/manual/README.md) ensina a fazer a primeira consulta, preparar o sistema offline e reproduzir uma análise científica em R. Para um passeio breve pela interface, use o [guia lúdico](GUIA_LUDICO.md). Para pesquisa, consulte o [protocolo](PROTOCOL.md) e o [dicionário](CODEBOOK.md).
 Os testes e números observados estão na [ficha de validação real](docs/VALIDACAO_REAL.md).
 
 ## O que mudou na versão 0.2
